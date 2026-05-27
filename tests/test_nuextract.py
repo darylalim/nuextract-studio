@@ -1,6 +1,8 @@
 import json
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from nuextract import (
     MODE_CONTENT,
     MODE_MARKDOWN,
@@ -220,70 +222,58 @@ def test_split_empty_text():
 # --- extract_answer_block ---
 
 
-def test_extract_answer_block_wrapped():
-    assert extract_answer_block('<answer>{"k":1}</answer>') == '{"k":1}'
-
-
-def test_extract_answer_block_case_insensitive():
-    assert extract_answer_block("<ANSWER>x</ANSWER>") == "x"
-
-
-def test_extract_answer_block_picks_longest_valid_json():
-    """Multiple JSON objects in text → return the longest VALID one (not the
-    widest brace span). Replaces the old greedy-regex behavior."""
-    text = 'prefix {"a":1} middle {"b":1,"c":2} suffix'
-    assert extract_answer_block(text) == '{"b":1,"c":2}'
-
-
-def test_extract_answer_block_single_json_returns_clean():
-    """The common case: reasoning text followed by one JSON object."""
-    out = extract_answer_block('Looking at the doc... {"name": "John", "age": 30}')
-    assert out == '{"name": "John", "age": 30}'
-
-
-def test_extract_answer_block_handles_nested_json():
-    """Nested objects parse as one — return the outer span, not a sub-object."""
-    text = '{"outer": 2, "inner": {"k": 1}}'
-    assert extract_answer_block(text) == text
-
-
-def test_extract_answer_block_ignores_unparseable_brace_runs():
-    """Broken `{...` runs don't crash; falls back to stripped text when no
-    valid JSON anywhere."""
-    assert extract_answer_block("{not json {still bad") == "{not json {still bad"
-
-
-def test_extract_answer_block_no_match_returns_stripped():
-    assert extract_answer_block("  just text  ") == "just text"
-
-
-def test_extract_answer_block_empty():
-    assert extract_answer_block("") == ""
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        pytest.param('<answer>{"k":1}</answer>', '{"k":1}', id="answer_wrapped"),
+        pytest.param("<ANSWER>x</ANSWER>", "x", id="answer_case_insensitive"),
+        pytest.param(
+            'prefix {"a":1} middle {"b":1,"c":2} suffix',
+            '{"b":1,"c":2}',
+            id="picks_longest_valid_json",
+        ),
+        pytest.param(
+            'Looking at the doc... {"name": "John", "age": 30}',
+            '{"name": "John", "age": 30}',
+            id="reasoning_prefix_plus_json",
+        ),
+        pytest.param(
+            '{"outer": 2, "inner": {"k": 1}}',
+            '{"outer": 2, "inner": {"k": 1}}',
+            id="nested_json_as_single_span",
+        ),
+        pytest.param(
+            "{not json {still bad",
+            "{not json {still bad",
+            id="unparseable_brace_runs",
+        ),
+        pytest.param("  just text  ", "just text", id="no_match_returns_stripped"),
+        pytest.param("", "", id="empty"),
+    ],
+)
+def test_extract_answer_block(text, expected):
+    assert extract_answer_block(text) == expected
 
 
 # --- pretty_json_or_text ---
 
 
-def test_pretty_json_or_text_valid_json():
-    out = pretty_json_or_text('{"a":1,"b":2}')
-    parsed = json.loads(out)
-    assert parsed == {"a": 1, "b": 2}
-    # Indented format
-    assert "\n" in out
-
-
-def test_pretty_json_or_text_invalid_returns_original():
-    assert pretty_json_or_text("not json {{{") == "not json {{{"
-
-
-def test_pretty_json_or_text_empty():
-    assert pretty_json_or_text("") == ""
-    assert pretty_json_or_text("   ") == ""
-
-
-def test_pretty_json_or_text_preserves_unicode():
-    out = pretty_json_or_text('{"name":"élise"}')
-    assert "élise" in out
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        pytest.param(
+            '{"a":1,"b":2}', '{\n  "a": 1,\n  "b": 2\n}', id="valid_json_indented"
+        ),
+        pytest.param(
+            '{"name":"élise"}', '{\n  "name": "élise"\n}', id="preserves_unicode"
+        ),
+        pytest.param("not json {{{", "not json {{{", id="invalid_returns_original"),
+        pytest.param("", "", id="empty"),
+        pytest.param("   ", "", id="whitespace_only"),
+    ],
+)
+def test_pretty_json_or_text(text, expected):
+    assert pretty_json_or_text(text) == expected
 
 
 # --- load_model integration boundary ---
