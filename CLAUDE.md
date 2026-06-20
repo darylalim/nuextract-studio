@@ -19,6 +19,8 @@ uv run pytest tests/test_file.py::test_name  # Run a single test
 uv run python scripts/probe_mlx_vlm.py     # End-to-end model probe
 ```
 
+When working with Python, invoke the relevant `/astral:<skill>` for uv, ty, and ruff to ensure best practices are followed.
+
 CI via GitHub Actions (`.github/workflows/ci.yml`): lint, format check, type check, and `pytest` on every push and PR to `main`. Uses `macos-14` (Apple Silicon) runners for MLX compatibility.
 
 ## Architecture
