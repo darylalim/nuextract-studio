@@ -51,7 +51,11 @@ def _render(processor: Any, messages: list[dict], **kwargs: Any) -> str:
 def main() -> int:
     _print_header(f"Loading {MODEL_ID} via mlx_vlm.load()")
     try:
-        model, processor = load(MODEL_ID)
+        # mlx-vlm returns dynamically-typed (model, processor) objects; treat them as
+        # Any (as nuextract.load_model does). mlx-vlm annotates generate()'s processor
+        # param as PreTrainedTokenizer but accepts a full processor at runtime.
+        loaded: tuple[Any, Any] = load(MODEL_ID)
+        model, processor = loaded
     except Exception as e:
         print(f"  [FAIL] load() raised: {type(e).__name__}: {e}")
         return 2

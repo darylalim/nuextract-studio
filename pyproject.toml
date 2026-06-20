@@ -4,17 +4,17 @@ version = "1.0.0"
 description = "Extract structured information from documents, convert images to Markdown, and generate templates with the NuMind NuExtract3 model on Apple Silicon with MLX."
 requires-python = ">=3.12"
 dependencies = [
-    "mlx-vlm==0.4.4",
-    "streamlit==1.54.0",
-    "torchvision==0.27.0",
-    "transformers==5.9.0",
+    "mlx-vlm==0.6.3",
+    "streamlit==1.58.0",
+    "torchvision==0.27.1",
+    "transformers==5.12.1",
 ]
 
 [dependency-groups]
 dev = [
-    "pytest==9.0.2",
-    "ruff==0.15.0",
-    "ty==0.0.16",
+    "pytest==9.1.1",
+    "ruff==0.15.18",
+    "ty==0.0.51",
 ]
 
 [tool.pytest.ini_options]

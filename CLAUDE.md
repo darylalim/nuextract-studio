@@ -68,7 +68,7 @@ Run: `uv run python scripts/probe_mlx_vlm.py`. Exits non-zero on any failure.
 
 - **Model**: `numind/NuExtract3-mlx-8bits` — 8-bit affine quant of NuExtract3 (Qwen3.5 4B base), ~5 GB on disk
 - **Context**: 131K tokens supported by the model, but practical limit is bounded by unified memory + KV cache size
-- **Pinned transformers**: `==5.9.0` (the model's declared `transformers_version` is `5.5.4` but `qwen3_5` only enters the auto-resolver mapping in later versions; `5.9.0` is the verified-working version).
+- **Pinned transformers**: `==5.12.1` (the model's declared `transformers_version` is `5.5.4` but `qwen3_5` only enters the auto-resolver mapping in later versions; `5.12.1` is the verified-working version — `qwen3_5` is still in the resolver, `Qwen2VLImageProcessor` is still exported, and `Qwen3VLImageProcessor` still does not exist, so the `patch_processor_config` shim remains necessary).
 - **Required torchvision**: HF's `Qwen2VLImageProcessor` requires it even for text-only inference — the processor is constructed eagerly on load.
 - **Packaging-bug shim** in `nuextract.patch_processor_config()`: the MLX repo's `processor_config.json` references `Qwen3VLImageProcessor` (doesn't exist in transformers); upstream `numind/NuExtract3` correctly uses `Qwen2VLImageProcessor`. The shim patches the locally cached copy on every `load_model()` call (idempotent).
 - **Template kwarg API**: HF transformers' `apply_chat_template` accepts template variables as **direct keyword arguments** (e.g. `template="..."`, `mode="..."`, `enable_thinking=False`). The HF Space uses vLLM which expects them nested under `chat_template_kwargs={...}` — that convention does **not** apply to direct HF/mlx-vlm usage.

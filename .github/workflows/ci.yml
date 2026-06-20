@@ -30,7 +30,6 @@ jobs:
 
       - name: Type check
         run: uv run ty check
-        continue-on-error: true  # ty is pre-1.0 and has a known pre-existing diagnostic
 
       - name: Run tests
         run: uv run pytest -v
