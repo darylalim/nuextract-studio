@@ -21,5 +21,11 @@ dev = [
 select = ["E", "F", "I", "UP"]
 ignore = ["E501"]  # line length is handled by the formatter
 
+[tool.ty.environment]
+python-version = "3.12"  # analyze against the declared requires-python floor
+
+[tool.ty.terminal]
+error-on-warning = true  # warnings fail the check (CI gates on ty)
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
