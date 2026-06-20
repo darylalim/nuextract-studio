@@ -62,6 +62,12 @@ def _save_uploaded_image(uploaded_file: Any) -> str | None:
     arrives.
     """
     if uploaded_file is None:
+        # Upload was removed: delete the orphaned temp file and clear stale
+        # session_state so nothing leaks on disk or lingers in state.
+        cached_path = st.session_state.pop(_IMG_PATH_KEY, None)
+        st.session_state.pop(_IMG_ID_KEY, None)
+        if cached_path:
+            Path(cached_path).unlink(missing_ok=True)
         return None
     file_id = uploaded_file.file_id
     cached_path = st.session_state.get(_IMG_PATH_KEY)
@@ -155,6 +161,7 @@ def _render_download_button(
             data=data,
             file_name=file_name,
             mime=mime,
+            icon=":material/download:",
             key=f"download_{download_kind}",
         )
 
@@ -222,7 +229,11 @@ def _run_mode(
 
 # --- Streamlit UI ---
 
-st.set_page_config(page_title="NuExtract3", layout="wide")
+st.set_page_config(
+    page_title="NuExtract3",
+    page_icon=":material/document_scanner:",
+    layout="wide",
+)
 st.title("NuExtract3")
 
 with st.spinner("Loading model (first run downloads ~5 GB)..."):
@@ -233,7 +244,10 @@ col_left, col_right = st.columns([1, 1], gap="medium")
 with col_left:
     st.subheader("Input")
     uploaded_image = st.file_uploader(
-        "Image", type=["jpg", "jpeg", "png", "webp"], key="image_input"
+        "Image",
+        type=["jpg", "jpeg", "png", "webp"],
+        help="JPG, PNG, or WEBP image of the document.",
+        key="image_input",
     )
     if uploaded_image is not None:
         st.image(uploaded_image, width="stretch")
@@ -245,8 +259,11 @@ with col_left:
         key="text_input",
     )
 
-    st.divider()
+    st.space("medium")
     st.markdown("**Template (JSON)**")
+    st.caption(
+        "Describe each field with a type hint, e.g. string, number, or YYYY-MM-DD."
+    )
     template_input = st.text_area(
         "Template",
         value=DEFAULT_TEMPLATE,
@@ -265,34 +282,54 @@ with col_left:
     col_temp, col_reason, col_tokens = st.columns([2, 1, 2])
     with col_temp:
         temperature = st.slider(
-            "Temperature", 0.0, 1.0, 0.0, 0.05, key="temperature_slider"
+            "Temperature",
+            0.0,
+            1.0,
+            0.0,
+            0.05,
+            help="0 is deterministic; raise for more varied output.",
+            key="temperature_slider",
         )
     with col_reason:
-        reasoning = st.checkbox("Reasoning", value=False, key="reasoning_checkbox")
+        reasoning = st.checkbox(
+            "Reasoning",
+            value=False,
+            help="Show the model's <think> trace in the Reasoning pane.",
+            key="reasoning_checkbox",
+        )
     with col_tokens:
         max_tokens = st.slider(
-            "Max tokens", 256, 8192, DEFAULT_MAX_TOKENS, 256, key="max_tokens_slider"
+            "Max tokens",
+            256,
+            8192,
+            DEFAULT_MAX_TOKENS,
+            256,
+            help="Upper bound on generated tokens.",
+            key="max_tokens_slider",
         )
 
-    st.divider()
+    st.space("medium")
     col_b1, col_b2, col_b3 = st.columns(3)
     with col_b1:
         btn_extract = st.button(
             "Extract JSON",
             type="primary",
-            use_container_width=True,
+            icon=":material/data_object:",
+            width="stretch",
             key="extract_button",
         )
     with col_b2:
         btn_markdown = st.button(
             "Convert to Markdown",
-            use_container_width=True,
+            icon=":material/article:",
+            width="stretch",
             key="markdown_button",
         )
     with col_b3:
         btn_template = st.button(
             "Generate template",
-            use_container_width=True,
+            icon=":material/auto_awesome:",
+            width="stretch",
             key="template_button",
         )
 

@@ -270,6 +270,51 @@ def test_reasoning_enabled_splits_reasoning_and_output_panes(at, stream_captor):
     assert any('"k": 1' in c.value for c in at.code)
 
 
+def test_extract_passes_instructions_to_stream_extract(at, stream_captor):
+    """The optional instructions field flows through to the streaming call."""
+    captured, set_chunks = stream_captor
+    set_chunks('{"k": 1}')
+
+    at.text_area(key="text_input").set_value("doc text")
+    at.text_area(key="instructions_input").set_value("use British date format")
+    at.button(key="extract_button").click()
+    at.run()
+
+    assert captured["instructions"] == "use British date format"
+
+
+def test_template_gen_passes_system_prompt(at, stream_captor):
+    """Template-gen sends the TEMPLATE_GEN_GUIDANCE system prompt (the Extract
+    and Markdown paths pass no system prompt)."""
+    # sys.modules lookup — AppTest already loaded streamlit_app, so this does
+    # not re-execute the script body without mocks.
+    from streamlit_app import TEMPLATE_GEN_GUIDANCE
+
+    captured, set_chunks = stream_captor
+    set_chunks('{"field_a": "string"}')
+
+    at.text_area(key="text_input").set_value("describe a document")
+    at.button(key="template_button").click()
+    at.run()
+
+    assert captured["system_prompt"] == TEMPLATE_GEN_GUIDANCE
+
+
+def test_template_gen_forces_reasoning_off(at, stream_captor):
+    """Template-gen overrides the reasoning checkbox: enable_thinking is always
+    False even when the user has reasoning on (the Jinja only allows thinking
+    for structured/content modes)."""
+    captured, set_chunks = stream_captor
+    set_chunks('{"field_a": "string"}')
+
+    at.text_area(key="text_input").set_value("describe a document")
+    at.checkbox(key="reasoning_checkbox").check()
+    at.button(key="template_button").click()
+    at.run()
+
+    assert captured["enable_thinking"] is False
+
+
 # --- Streaming flow with image (file_uploader patched via at_with_image) ---
 
 
