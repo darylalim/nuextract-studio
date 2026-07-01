@@ -239,8 +239,7 @@ def _output_section(model: Any, processor: Any) -> None:
     session_state, which the keyed left-column widgets populate on the full
     rerun that precedes this fragment.
     """
-    col_b1, col_b2, col_b3 = st.columns(3)
-    with col_b1:
+    with st.container(horizontal=True):
         btn_extract = st.button(
             "Extract JSON",
             type="primary",
@@ -248,14 +247,12 @@ def _output_section(model: Any, processor: Any) -> None:
             width="stretch",
             key="extract_button",
         )
-    with col_b2:
         btn_markdown = st.button(
             "Convert to Markdown",
             icon=":material/article:",
             width="stretch",
             key="markdown_button",
         )
-    with col_b3:
         btn_template = st.button(
             "Generate template",
             icon=":material/auto_awesome:",
