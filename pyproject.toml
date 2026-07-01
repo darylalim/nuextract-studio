@@ -1,6 +1,6 @@
 [project]
 name = "nuextract-studio"
-version = "1.1.0"
+version = "1.2.0"
 description = "Streamlit application for structured extraction, document understanding, and template generation with NuMind NuExtract on Apple Silicon with MLX."
 readme = "README.md"
 requires-python = ">=3.12"

@@ -61,7 +61,7 @@ CI (GitHub Actions, Apple Silicon runners) runs lint, format check, type check, 
 ## Project Structure
 
 ```
-streamlit_app.py                    # UI: two-column layout, three buttons, streaming output
+streamlit_app.py                    # UI: two-pane layout, buttons + streamed output in an st.fragment
 nuextract.py                        # mlx-vlm wrapper: load, render prompt, stream extraction
 .streamlit/
   config.toml                       # Theme: GitHub-inspired light/dark palette
