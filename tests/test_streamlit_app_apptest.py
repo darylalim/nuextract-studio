@@ -119,6 +119,12 @@ def test_no_warnings_or_errors_on_initial_load(at):
     assert len(at.warning) == 0
 
 
+def test_result_pane_shows_idle_hint_on_initial_load(at):
+    """Before any run, the Result pane shows an empty-state hint (rendered into
+    its placeholder by the _output_section fragment) instead of a blank pane."""
+    assert any("Choose an action" in c.value for c in at.caption)
+
+
 # --- Extract button validation ---
 
 
