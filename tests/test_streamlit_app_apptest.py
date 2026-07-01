@@ -125,6 +125,20 @@ def test_result_pane_shows_idle_hint_on_initial_load(at):
     assert any("Choose an action" in c.value for c in at.caption)
 
 
+def test_idle_hint_cleared_after_run(at, stream_captor):
+    """Once a generation runs, the idle hint is gone — the output replaces it in
+    the same placeholder rather than lingering beside the result."""
+    _, set_chunks = stream_captor
+    set_chunks('{"k": 1}')
+
+    at.text_area(key="text_input").set_value("doc text")
+    at.button(key="extract_button").click()
+    at.run()
+
+    assert not any("Choose an action" in c.value for c in at.caption)
+    assert any('"k": 1' in c.value for c in at.code)
+
+
 # --- Extract button validation ---
 
 

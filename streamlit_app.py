@@ -19,6 +19,7 @@ import streamlit as st
 
 from nuextract import (
     DEFAULT_MAX_TOKENS,
+    DEFAULT_TEMPERATURE,
     MODE_MARKDOWN,
     MODE_TEMPLATE_GENERATION,
     extract_answer_block,
@@ -156,11 +157,15 @@ def _render_download_button(
     label, file_name, mime, is_json = _DOWNLOAD_CONFIGS[download_kind]
     data = extract_answer_block(output) if is_json else output
     with placeholder.container():
+        # on_click="ignore" keeps the download client-side so clicking it does
+        # not rerun the _output_section fragment — a rerun would repaint the idle
+        # hint over the result and drop this button (no generate button is active).
         st.download_button(
             label,
             data=data,
             file_name=file_name,
             mime=mime,
+            on_click="ignore",
             icon=":material/download:",
             key=f"download_{download_kind}",
         )
@@ -266,9 +271,11 @@ def _output_section(model: Any, processor: Any) -> None:
     output_placeholder = st.empty()
     download_placeholder = st.empty()
 
-    # Idle hint shown until a generation runs (the handlers below overwrite the
-    # placeholder), so the Result pane is not blank on first load.
-    output_placeholder.caption("Choose an action above to generate output.")
+    # Idle hint, shown only when no generate button fired this run: keeps the
+    # Result pane from being blank on first load, without lingering over the
+    # spinner during generation or repainting after an output-less rerun.
+    if not (btn_extract or btn_markdown or btn_template):
+        output_placeholder.caption("Choose an action above to generate output.")
 
     # Inputs live in the left column (outside this fragment); read their current
     # values from session_state via their widget keys.
@@ -276,7 +283,7 @@ def _output_section(model: Any, processor: Any) -> None:
     text = st.session_state.get("text_input", "")
     template_str = st.session_state.get("template_input", "")
     instructions = st.session_state.get("instructions_input", "")
-    temperature = st.session_state.get("temperature_slider", 0.0)
+    temperature = st.session_state.get("temperature_slider", DEFAULT_TEMPERATURE)
     reasoning = st.session_state.get("reasoning_checkbox", False)
     max_tokens = st.session_state.get("max_tokens_slider", DEFAULT_MAX_TOKENS)
 
@@ -413,7 +420,7 @@ with col_left:
             "Temperature",
             0.0,
             1.0,
-            0.0,
+            DEFAULT_TEMPERATURE,
             0.05,
             help="0 is deterministic; raise for more varied output.",
             key="temperature_slider",

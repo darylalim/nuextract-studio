@@ -71,5 +71,5 @@ tests/
   conftest.py                       # sys.path setup
   test_nuextract.py                 # Wrapper tests (40)
   test_streamlit_app.py             # App helper tests (25)
-  test_streamlit_app_apptest.py     # End-to-end UI tests via Streamlit AppTest (24)
+  test_streamlit_app_apptest.py     # End-to-end UI tests via Streamlit AppTest (25)
 ```

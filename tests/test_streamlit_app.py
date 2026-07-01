@@ -347,6 +347,8 @@ def test_render_download_button_extract_mode_emits_clean_json(app):
     assert call.kwargs["data"] == '{"name": "Alice"}'  # answer block extracted
     assert call.kwargs["file_name"] == "extraction.json"
     assert call.kwargs["mime"] == "application/json"
+    # Client-side download (no fragment rerun that would clear the result/button)
+    assert call.kwargs["on_click"] == "ignore"
 
 
 def test_render_download_button_markdown_mode_keeps_raw_output(app):
