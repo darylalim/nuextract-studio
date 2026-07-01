@@ -25,6 +25,8 @@ CI via GitHub Actions (`.github/workflows/ci.yml`): lint, format check, type che
 
 Lint/type config lives in `pyproject.toml`: Ruff selects `E`/`F`/`I` (import sort)/`UP` (pyupgrade), with line length deferred to the formatter (`ignore = ["E501"]`); ty targets the `requires-python` floor (3.12) with `error-on-warning`.
 
+Team-shared Claude Code hooks in `.claude/hooks/` (wired via `.claude/settings.json`; both tracked in git) enforce these same gates at edit-time: `ruff format` + `ruff check --fix` + `ty check` after each `.py` edit (PostToolUse), a block on editing `.env*`/`.streamlit/secrets.toml` (PreToolUse), and `pytest` when a turn changed `.py` files (Stop, loop-guarded). They need `jq` + `uv` (missing `jq` degrades to a silent no-op) and are snapshotted at session start, so restart after pulling changes. Details in `.claude/hooks/README.md`; personal overrides go in the gitignored `.claude/settings.local.json`.
+
 ## Architecture
 
 App in `streamlit_app.py`, runtime wrapper in `nuextract.py`, probe in `scripts/probe_mlx_vlm.py`.
