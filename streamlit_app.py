@@ -356,11 +356,11 @@ def _output_section(model: Any, processor: Any) -> None:
 # --- Streamlit UI ---
 
 st.set_page_config(
-    page_title="NuExtract3",
+    page_title="NuExtract Studio",
     page_icon=":material/document_scanner:",
     layout="wide",
 )
-st.title("NuExtract3")
+st.title("NuExtract Studio")
 
 with st.spinner("Loading model (first run downloads ~5 GB)..."):
     model, processor = get_model()

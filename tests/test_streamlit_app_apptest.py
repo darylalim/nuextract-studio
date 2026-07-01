@@ -97,7 +97,7 @@ def test_no_exception_on_initial_load(at):
 
 
 def test_title_renders(at):
-    assert at.title[0].value == "NuExtract3"
+    assert at.title[0].value == "NuExtract Studio"
 
 
 def test_default_template_loads_in_editor(at):
