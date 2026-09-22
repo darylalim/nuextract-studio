@@ -16,65 +16,135 @@ from nuextract import (
     build_messages,
     extract_answer_block,
     load_model,
-    patch_processor_config,
     pretty_json_or_text,
     render_prompt,
     split_reasoning_and_output,
     stream_extract,
 )
 
-# --- patch_processor_config ---
-
-
-def test_patch_processor_config_replaces_string(tmp_path):
-    cfg = tmp_path / "processor_config.json"
-    cfg.write_text(json.dumps({"image_processor_type": "Qwen3VLImageProcessor"}))
-    changed = patch_processor_config(tmp_path)
-    assert changed is True
-    new_content = cfg.read_text()
-    assert "Qwen3VLImageProcessor" not in new_content
-    assert "Qwen2VLImageProcessor" in new_content
-
-
-def test_patch_processor_config_idempotent(tmp_path):
-    cfg = tmp_path / "processor_config.json"
-    cfg.write_text(json.dumps({"image_processor_type": "Qwen2VLImageProcessor"}))
-    changed = patch_processor_config(tmp_path)
-    assert changed is False
-    assert "Qwen2VLImageProcessor" in cfg.read_text()
-
-
-def test_patch_processor_config_missing_file(tmp_path):
-    assert patch_processor_config(tmp_path) is False
-
-
-# --- transformers compatibility invariants ---
+# --- mlx-vlm processor substitution ---
 #
-# The transformers pin is load-bearing and these two facts are what make the
-# stack work. Both are model-free one-liners, so CI gates them instead of a
-# checklist item in CLAUDE.md that a future bump can quietly skip.
+# The invariant the stack actually depends on. mlx_vlm.load() builds the
+# processor through transformers' AutoProcessor.from_pretrained, but importing
+# mlx_vlm.models.qwen3_5 (which load() does while resolving the model class,
+# before any processor is built) patches that call to return mlx-vlm's own
+# numpy Qwen3VLProcessor for any checkpoint whose config.json says model_type
+# "qwen3_5". That substitution is why the app needs neither torch nor
+# torchvision, and why the image_processor_type in processor_config.json is
+# never read. Should it stop, loading falls through to transformers' classes,
+# which need torchvision and do read that key — with the upstream value this
+# test writes, that path raises "Unrecognized image processor". Every other
+# test mocks mlx-vlm, so this is the only one that would notice.
+
+_UPSTREAM_PROCESSOR_CONFIG = {
+    "processor_class": "Qwen3VLProcessor",
+    "image_processor": {
+        # Deliberately the value numind/NuExtract3-mlx-8bits ships, unpatched.
+        "image_processor_type": "Qwen3VLImageProcessor",
+        "patch_size": 16,
+        "temporal_patch_size": 2,
+        "merge_size": 2,
+        "min_pixels": 65536,
+        "max_pixels": 16777216,
+        "image_mean": [0.5, 0.5, 0.5],
+        "image_std": [0.5, 0.5, 0.5],
+    },
+    "video_processor": {"video_processor_type": "Qwen3VLVideoProcessor"},
+}
 
 
-def test_qwen3_5_is_in_the_auto_config_resolver():
-    """The model's architecture must be resolvable by AutoConfig.
+def _write_weightless_qwen3_5_checkpoint(directory):
+    """Write the smallest local checkpoint mlx-vlm builds a qwen3_5 processor from.
 
-    NuExtract3 is Qwen3.5-family; if a transformers bump drops 'qwen3_5' from
-    the mapping, load_model() fails with an unrecognized-model-type error.
+    A word-level tokenizer holding only the special tokens Qwen3VLProcessor
+    looks up stands in for the real 20 MB one; there are no weights, so
+    nothing here downloads or loads a model.
     """
-    from transformers.models.auto.configuration_auto import CONFIG_MAPPING_NAMES
+    from tokenizers import Tokenizer, models
 
-    assert "qwen3_5" in CONFIG_MAPPING_NAMES
+    specials = [
+        "<|endoftext|>",
+        "<|im_start|>",
+        "<|im_end|>",
+        "<|vision_start|>",
+        "<|vision_end|>",
+        "<|image_pad|>",
+        "<|video_pad|>",
+    ]
+    vocab = {token: index for index, token in enumerate(["[UNK]", *specials])}
+    tokenizer = Tokenizer(models.WordLevel(vocab, unk_token="[UNK]"))
+    tokenizer.add_special_tokens(specials)
+    tokenizer.save(str(directory / "tokenizer.json"))
+    (directory / "tokenizer_config.json").write_text(
+        json.dumps(
+            {
+                "tokenizer_class": "TokenizersBackend",
+                "eos_token": "<|im_end|>",
+                "pad_token": "<|endoftext|>",
+            }
+        )
+    )
+    (directory / "config.json").write_text(json.dumps({"model_type": "qwen3_5"}))
+    (directory / "processor_config.json").write_text(
+        json.dumps(_UPSTREAM_PROCESSOR_CONFIG)
+    )
 
 
-def test_qwen2_vl_image_processor_is_still_exported():
-    """patch_processor_config rewrites the config to name this class.
+def test_mlx_vlm_substitutes_its_own_processor_for_qwen3_5(tmp_path, monkeypatch):
+    """mlx_vlm.load() must build mlx-vlm's torch-free processor, not transformers'.
 
-    If a transformers bump removes or renames it, the shim would point the
-    processor at a class that cannot be resolved.
+    Only weight loading is stubbed. load() resolves the model package itself —
+    in load_model(), which the stub mirrors, and again in load_image_processor()
+    — before it builds the processor, so everything from that import to the
+    returned processor is mlx-vlm's real code path, including the order.
     """
-    import transformers
+    import mlx_vlm.utils
+    from PIL import Image
 
-    assert hasattr(transformers, "Qwen2VLImageProcessor")
+    def _load_model_without_weights(model_path, lazy=False, **kwargs):
+        """Resolve the model package as load_model() does, then skip the weights."""
+        config = mlx_vlm.utils.load_config(model_path)
+        mlx_vlm.utils.get_model_and_args(config=config, model_path=model_path)
+        return MagicMock(config=MagicMock(eos_token_id=None))
+
+    _write_weightless_qwen3_5_checkpoint(tmp_path)
+    monkeypatch.setattr(mlx_vlm.utils, "load_model", _load_model_without_weights)
+
+    _, processor = mlx_vlm.utils.load(str(tmp_path))
+
+    for component in (
+        processor,
+        processor.image_processor,
+        processor.video_processor,
+    ):
+        # A prefix, not a class identity: an mlx-vlm rename should not fail
+        # this, falling back to transformers.* should.
+        assert type(component).__module__.startswith("mlx_vlm."), type(component)
+    # The geometry comes from processor_config.json, not the class defaults
+    # (min_pixels 3136), which would give a 4x4 grid for this image.
+    grid = processor.image_processor(images=[Image.new("RGB", (32, 32))])
+    assert grid["image_grid_thw"].tolist() == [[1, 16, 16]]
+
+
+def test_lockfile_does_not_pull_in_torch():
+    """The stack is torch-free by design (see the section comment above).
+
+    transformers imports torch eagerly whenever it is importable, which costs
+    ~1.4 s and ~280 MB RSS on `import nuextract`. Reads the committed uv.lock
+    rather than probing the environment: every dependency change is relocked
+    (CI's `uv sync --locked` enforces it), so this catches torch returning by
+    any route, while a local .venv that still holds torch from before the drop
+    — `uv run` syncs inexactly — does not fail the suite.
+    """
+    import tomllib
+
+    lock = tomllib.loads((Path(__file__).parents[1] / "uv.lock").read_text())
+    names = {package["name"] for package in lock["package"]}
+    for name in ("torch", "torchvision"):
+        assert name not in names, (
+            f"uv.lock pulls in {name}; find what depends on it with "
+            f"`uv tree --frozen --invert --package {name}`"
+        )
 
 
 # --- build_messages ---
@@ -327,17 +397,15 @@ def test_conftest_guard_blocks_a_forgotten_mock():
         _nuextract.mlx_vlm_load("/some/dir")
 
 
-def test_load_model_invokes_snapshot_and_patch_and_load():
-    """load_model orchestrates: snapshot_download → patch → mlx_vlm.load."""
+def test_load_model_invokes_snapshot_and_load():
+    """load_model orchestrates: snapshot_download → mlx_vlm.load."""
     with (
-        patch("nuextract.patch_processor_config") as mock_patch,
         patch("nuextract.snapshot_download", return_value="/fake/dir") as mock_dl,
         patch("nuextract.mlx_vlm_load", return_value=("M", "P")) as mock_load,
     ):
         model, processor = load_model("test/repo", revision="abc123")
 
     mock_dl.assert_called_once_with(repo_id="test/repo", revision="abc123")
-    mock_patch.assert_called_once_with("/fake/dir")
     mock_load.assert_called_once_with("/fake/dir")
     assert (model, processor) == ("M", "P")
 
@@ -345,7 +413,6 @@ def test_load_model_invokes_snapshot_and_patch_and_load():
 def test_load_model_pins_the_default_revision():
     """With no arguments, load_model fetches the pinned commit, never `main`."""
     with (
-        patch("nuextract.patch_processor_config"),
         patch("nuextract.snapshot_download", return_value="/fake/dir") as mock_dl,
         patch("nuextract.mlx_vlm_load", return_value=("M", "P")),
     ):

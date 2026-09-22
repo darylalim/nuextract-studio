@@ -447,9 +447,11 @@ def _output_section() -> None:
             # Message through st.code, not st.error: st.error renders its body as
             # GitHub-flavored Markdown with soft breaks disabled, so the
             # multi-line messages this path actually produces (an offline hub
-            # download, an unpatched processor_config.json) collapse onto one
-            # line. st.code also keeps untrusted text out of the Markdown
-            # renderer, the same reason the reasoning trace uses it.
+            # download, or transformers' eight-line "requires the PyTorch
+            # library" error when mlx-vlm's own processor load fails and falls
+            # through to it) collapse onto one line. st.code also keeps
+            # untrusted text out of the Markdown renderer, the same reason the
+            # reasoning trace uses it.
             st.code(str(loaded) or repr(loaded), language=None, wrap_lines=True)
             # get_model returns the exception instead of raising it, so Streamlit
             # never reports it and nothing logs it — this expander is the only

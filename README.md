@@ -95,7 +95,7 @@ Exact values vary with the model; fields it can't fill come back `null` (here th
 - **First run looks stuck / Result pane spins** — it's downloading the ~5 GB model; watch progress in the terminal, not the browser. The rest of the interface is already on screen meanwhile. Interrupted downloads resume on the next run (Hugging Face caches partial files).
 - **"Model failed to load"** — the error is shown in the Output pane with a **Retry model load** button. The failure is cached deliberately, so it won't retry itself on every click elsewhere in the app; use the button once you've fixed the cause.
 - **Out of memory or very slow generation** — the 8-bit model needs ~5–6 GB of unified memory plus KV cache. On 16 GB machines, close other apps, lower **Max tokens**, and keep inputs shorter.
-- **`Qwen3VLImageProcessor` / transformers errors** — dependency versions are pinned in `pyproject.toml` (notably `transformers==5.17.0` and `torchvision`, both required even for text-only runs). Run `uv sync` to restore the locked versions and avoid upgrading these manually.
+- **`Unrecognized image processor`, or `requires the PyTorch library` / `requires the Torchvision library`** — don't install PyTorch: the app doesn't use it. These messages come from transformers after mlx-vlm's own processor failed to load, and they hide the real error. Run `uv sync` to restore the pinned versions (notably `mlx-vlm==0.7.2` and `transformers==5.17.0`) and avoid upgrading them manually; if the error persists, the *No torch* entry in [CLAUDE.md](CLAUDE.md) shows how to surface the underlying cause.
 
 ## Development
 
@@ -103,7 +103,7 @@ Exact values vary with the model; fields it can't fill come back `null` (here th
 uv run --frozen ruff check .      # Lint
 uv run --frozen ruff format .     # Format (add --check to verify without rewriting)
 uv run --frozen ty check          # Type check
-uv run --frozen pytest            # Tests (109)
+uv run --frozen pytest            # Tests (106)
 ```
 
 `--frozen` is not optional here. A bare `uv run` locks and syncs by default, so with an out-of-date `uv.lock` it silently rewrites the lock in your working tree — every gate then passes against the regenerated lock while the committed one stays stale, and CI's `uv sync --locked` fails on `main`.
@@ -132,7 +132,7 @@ scripts/
   probe_mlx_vlm.py                  # Verifies model + template kwargs flow-through end-to-end
 tests/
   conftest.py                       # sys.path setup + guard: no test may load a real model
-  test_nuextract.py                 # Wrapper tests (47)
+  test_nuextract.py                 # Wrapper tests (44)
   test_streamlit_app.py             # App helper tests (29)
   test_streamlit_app_apptest.py     # End-to-end UI tests via Streamlit AppTest (33)
 .githooks/
@@ -154,7 +154,7 @@ uv run --frozen ty check
 uv run --frozen pytest
 ```
 
-Add or update tests where practical; the suite mocks the model so it runs fast and needs no network (currently 109 tests). Enabling `git config core.hooksPath .githooks` runs all four of these gates, plus `uv lock --check`, automatically before each push. See [CLAUDE.md](CLAUDE.md) for an architecture overview.
+Add or update tests where practical; the suite mocks the model so it runs fast and needs no network (currently 106 tests). Enabling `git config core.hooksPath .githooks` runs all four of these gates, plus `uv lock --check`, automatically before each push. See [CLAUDE.md](CLAUDE.md) for an architecture overview.
 
 ## Acknowledgments
 

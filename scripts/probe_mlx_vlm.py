@@ -10,8 +10,8 @@ What this verifies (in order):
   4. Passing mode='template-generation' produces 【task】template generation
   5. End-to-end generate() returns parseable JSON on a trivial extraction
   6. End-to-end generate() with an image reaches the vision path and returns
-     parseable JSON (the only check that exercises torchvision / the image
-     processor — every test in tests/ mocks mlx_vlm.stream_generate)
+     parseable JSON (the only check that runs an image through the model —
+     every test in tests/ mocks mlx_vlm.stream_generate)
 
 NOTE: The HF Space uses vLLM, which accepts kwargs nested under `chat_template_kwargs`.
 HF transformers' apply_chat_template expects them as direct keyword arguments instead.
