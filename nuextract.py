@@ -22,6 +22,15 @@ from mlx_vlm import load as mlx_vlm_load
 from mlx_vlm import stream_generate as mlx_vlm_stream_generate
 
 DEFAULT_MODEL_ID = "numind/NuExtract3-mlx-8bits"
+# A full commit SHA of DEFAULT_MODEL_ID, never a branch or tag: the snapshot is
+# code as much as data. mlx-vlm >=0.6.16 executes any `model_file` config.json
+# names, its qwen3_5 processor loads default to trust_remote_code=True, and the
+# chat template that does all of NuExtract3's mode routing ships in the repo —
+# so tracking `main` would let an upstream push change what runs in-process,
+# with every test mocked past it. A bump re-downloads whichever files changed
+# (all ~5 GB if the weights did); keep scripts/probe_mlx_vlm.py's copy in step
+# (a test checks) and re-run the probe.
+DEFAULT_MODEL_REVISION = "bd8048c41019a63cdcbba93aa2dbfde06cbfc490"
 DEFAULT_MAX_TOKENS = 4096
 DEFAULT_TEMPERATURE = 0.0
 
@@ -60,9 +69,15 @@ def patch_processor_config(local_dir: str | Path) -> bool:
     return True
 
 
-def load_model(model_id: str = DEFAULT_MODEL_ID) -> tuple[Any, Any]:
-    """Download, patch, and load NuExtract3-MLX. Returns (model, processor)."""
-    local_dir = snapshot_download(repo_id=model_id)
+def load_model(
+    model_id: str = DEFAULT_MODEL_ID, *, revision: str | None = DEFAULT_MODEL_REVISION
+) -> tuple[Any, Any]:
+    """Download, patch, and load NuExtract3-MLX. Returns (model, processor).
+
+    `revision` defaults to the pinned commit of DEFAULT_MODEL_ID, so a caller
+    overriding `model_id` must pass its own revision (None tracks `main`).
+    """
+    local_dir = snapshot_download(repo_id=model_id, revision=revision)
     patch_processor_config(local_dir)
     return mlx_vlm_load(local_dir)
 

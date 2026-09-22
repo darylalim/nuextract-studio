@@ -1,9 +1,14 @@
+import ast
 import json
+import re
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from nuextract import (
+    DEFAULT_MODEL_ID,
+    DEFAULT_MODEL_REVISION,
     MODE_CONTENT,
     MODE_MARKDOWN,
     MODE_STRUCTURED,
@@ -329,12 +334,50 @@ def test_load_model_invokes_snapshot_and_patch_and_load():
         patch("nuextract.snapshot_download", return_value="/fake/dir") as mock_dl,
         patch("nuextract.mlx_vlm_load", return_value=("M", "P")) as mock_load,
     ):
-        model, processor = load_model("test/repo")
+        model, processor = load_model("test/repo", revision="abc123")
 
-    mock_dl.assert_called_once_with(repo_id="test/repo")
+    mock_dl.assert_called_once_with(repo_id="test/repo", revision="abc123")
     mock_patch.assert_called_once_with("/fake/dir")
     mock_load.assert_called_once_with("/fake/dir")
     assert (model, processor) == ("M", "P")
+
+
+def test_load_model_pins_the_default_revision():
+    """With no arguments, load_model fetches the pinned commit, never `main`."""
+    with (
+        patch("nuextract.patch_processor_config"),
+        patch("nuextract.snapshot_download", return_value="/fake/dir") as mock_dl,
+        patch("nuextract.mlx_vlm_load", return_value=("M", "P")),
+    ):
+        load_model()
+
+    mock_dl.assert_called_once_with(
+        repo_id=DEFAULT_MODEL_ID, revision=DEFAULT_MODEL_REVISION
+    )
+
+
+def test_default_model_revision_is_a_full_commit_sha():
+    """A branch or tag ("main", "v1") would satisfy snapshot_download just as
+    well and silently reopen the drift the pin exists to close."""
+    assert re.fullmatch(r"[0-9a-f]{40}", DEFAULT_MODEL_REVISION)
+
+
+def test_probe_pins_the_same_model_as_the_app():
+    """scripts/probe_mlx_vlm.py keeps its own copies of the model id and
+    revision, since it runs as a script and cannot import nuextract. A probe
+    loading a different snapshot passes or fails for reasons unrelated to the
+    app, so a drifted copy must fail here rather than in a user's hands."""
+    probe = Path(__file__).parents[1] / "scripts" / "probe_mlx_vlm.py"
+    constants = {}
+    for node in ast.parse(probe.read_text()).body:
+        if not (isinstance(node, ast.Assign) and len(node.targets) == 1):
+            continue
+        target, value = node.targets[0], node.value
+        if isinstance(target, ast.Name) and isinstance(value, ast.Constant):
+            constants[target.id] = value.value
+
+    assert constants["MODEL_ID"] == DEFAULT_MODEL_ID
+    assert constants["MODEL_REVISION"] == DEFAULT_MODEL_REVISION
 
 
 # --- stream_extract integration boundary ---
