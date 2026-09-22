@@ -387,11 +387,13 @@ def _output_section() -> None:
 
     Isolated in a fragment so clicking a generate button reruns only this
     region — the input widgets in the left column keep their state and are not
-    re-rendered while a generation runs. The buttons must live inside the
-    fragment for that isolation to apply (a fragment only reruns on its own
-    when the triggering widget is inside it). Input values are read from
-    session_state, which the keyed left-column widgets populate on the full
-    rerun that precedes this fragment.
+    re-rendered while a generation runs. The buttons live inside the fragment
+    because that is what gives this isolation by default: a fragment reruns on
+    its own when the triggering widget is inside it. (Since Streamlit 1.63 an
+    outside widget can also target a keyed fragment via st.rerun("<key>") from
+    a callback — more machinery for the same result here.) Input values are
+    read from session_state, which the keyed left-column widgets populate on
+    the full rerun that precedes this fragment.
 
     Loads the model itself rather than taking it as an argument, so the load
     can sit below this section's own chrome instead of above it — see the

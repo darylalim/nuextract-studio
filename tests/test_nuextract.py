@@ -406,8 +406,9 @@ def test_stream_extract_forwards_template_and_generation_kwargs():
 
 
 def test_stream_extract_skips_special_tokens():
-    """mlx-vlm defaults skip_special_tokens=False, which leaves <|im_end|> in
-    the decoded text — visible in markdown output and the downloaded .md."""
+    """mlx-vlm defaults skip_special_tokens=False. Before 0.7.0 that left
+    <|im_end|> in the decoded text — visible in markdown output and the
+    downloaded .md; 0.7.0+ stops on it first, so this flag is now a backstop."""
     chunks = [MagicMock(text="ok")]
     processor = MagicMock()
     processor.apply_chat_template.return_value = "PROMPT"

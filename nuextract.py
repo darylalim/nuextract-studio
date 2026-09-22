@@ -153,10 +153,14 @@ def stream_extract(
     kwargs: dict[str, Any] = {
         "max_tokens": max_tokens,
         "temperature": temperature,
-        # mlx-vlm defaults this to False, which leaves the EOS token (<|im_end|>)
-        # in the decoded text. Structured/template modes hide it because
-        # extract_answer_block re-parses the JSON, but markdown mode renders and
-        # downloads the raw string, so the saved .md ends with a literal token.
+        # A backstop since mlx-vlm 0.7.0, which added the tokenizer's EOS
+        # (<|im_end|>) to the stop set (Blaizzy/mlx-vlm#2112), so generation now
+        # ends before that token is decoded. Earlier releases stopped only on
+        # config.json's <|endoftext|>, and with mlx-vlm's False default the
+        # <|im_end|> landed in the text: structured/template modes hid it because
+        # extract_answer_block re-parses the JSON, but markdown mode rendered and
+        # downloaded the raw string, so the saved .md ended with a literal token.
+        # Kept so a future narrowing of that stop set cannot bring it back.
         "skip_special_tokens": True,
     }
     if image_path:

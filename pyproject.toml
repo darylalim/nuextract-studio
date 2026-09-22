@@ -7,10 +7,10 @@ license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = [
-    "mlx-vlm==0.6.13",
-    "streamlit==1.61.1",
-    "torchvision==0.28.0",
-    "transformers==5.15.0",
+    "mlx-vlm==0.7.2",
+    "streamlit==1.64.0",
+    "torchvision==0.29.0",
+    "transformers==5.17.0",
 ]
 
 [project.urls]
@@ -19,8 +19,8 @@ Repository = "https://github.com/darylalim/nuextract-studio"
 [dependency-groups]
 dev = [
     "pytest==9.1.1",
-    "ruff==0.16.3",
-    "ty==0.0.72",
+    "ruff==0.16.8",
+    "ty==0.0.83",
 ]
 
 [tool.ruff.lint]
