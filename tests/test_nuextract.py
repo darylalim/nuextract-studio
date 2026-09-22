@@ -126,6 +126,27 @@ def test_mlx_vlm_substitutes_its_own_processor_for_qwen3_5(tmp_path, monkeypatch
     assert grid["image_grid_thw"].tolist() == [[1, 16, 16]]
 
 
+def test_lockfile_does_not_pull_in_torch():
+    """The stack is torch-free by design (see the section comment above).
+
+    transformers imports torch eagerly whenever it is importable, which costs
+    ~1.4 s and ~280 MB RSS on `import nuextract`. Reads the committed uv.lock
+    rather than probing the environment: every dependency change is relocked
+    (CI's `uv sync --locked` enforces it), so this catches torch returning by
+    any route, while a local .venv that still holds torch from before the drop
+    — `uv run` syncs inexactly — does not fail the suite.
+    """
+    import tomllib
+
+    lock = tomllib.loads((Path(__file__).parents[1] / "uv.lock").read_text())
+    names = {package["name"] for package in lock["package"]}
+    for name in ("torch", "torchvision"):
+        assert name not in names, (
+            f"uv.lock pulls in {name}; find what depends on it with "
+            f"`uv tree --frozen --invert --package {name}`"
+        )
+
+
 # --- build_messages ---
 
 
