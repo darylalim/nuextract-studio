@@ -95,7 +95,7 @@ Exact values vary with the model; fields it can't fill come back `null` (here th
 - **First run looks stuck / Result pane spins** — it's downloading the ~5 GB model; watch progress in the terminal, not the browser. The rest of the interface is already on screen meanwhile. Interrupted downloads resume on the next run (Hugging Face caches partial files).
 - **"Model failed to load"** — the error is shown in the Output pane with a **Retry model load** button. The failure is cached deliberately, so it won't retry itself on every click elsewhere in the app; use the button once you've fixed the cause.
 - **Out of memory or very slow generation** — the 8-bit model needs ~5–6 GB of unified memory plus KV cache. On 16 GB machines, close other apps, lower **Max tokens**, and keep inputs shorter.
-- **`Qwen3VLImageProcessor` / transformers errors** — dependency versions are pinned in `pyproject.toml` (notably `mlx-vlm==0.7.2` and `transformers==5.17.0`). Run `uv sync` to restore the locked versions and avoid upgrading these manually.
+- **`Unrecognized image processor`, or `requires the PyTorch library` / `requires the Torchvision library`** — don't install PyTorch: the app doesn't use it. These messages come from transformers after mlx-vlm's own processor failed to load, and they hide the real error. Run `uv sync` to restore the pinned versions (notably `mlx-vlm==0.7.2` and `transformers==5.17.0`) and avoid upgrading them manually; if the error persists, the *No torch* entry in [CLAUDE.md](CLAUDE.md) shows how to surface the underlying cause.
 
 ## Development
 
