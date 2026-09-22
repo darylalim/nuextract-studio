@@ -2,11 +2,6 @@
 
 Loads numind/NuExtract3-mlx-8bits via mlx-vlm and exposes streaming generation
 across the three NuExtract3 modes (structured / markdown / template-generation).
-
-Includes a fix-up shim for a conversion bug in the MLX repo: its
-processor_config.json declares Qwen3VLImageProcessor, while the model author's
-own numind/NuExtract3 declares Qwen2VLImageProcessor. Upstream is authoritative,
-so the rewrite stays correct regardless of what transformers ships.
 """
 
 from __future__ import annotations
@@ -14,7 +9,6 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Iterator
-from pathlib import Path
 from typing import Any
 
 from huggingface_hub import snapshot_download
@@ -40,45 +34,24 @@ MODE_MARKDOWN = "markdown"
 MODE_TEMPLATE_GENERATION = "template-generation"
 
 
-def patch_processor_config(local_dir: str | Path) -> bool:
-    """Replace Qwen3VLImageProcessor with Qwen2VLImageProcessor in the local copy.
-
-    numind/NuExtract3-mlx-8bits declares "Qwen3VLImageProcessor" in its
-    processor_config.json; the model author's own numind/NuExtract3 declares
-    "Qwen2VLImageProcessor", with otherwise identical geometry (patch_size 16,
-    merge_size 2, temporal_patch_size 2). Upstream is authoritative, so this is
-    a conversion bug in the MLX repo — not a workaround for a missing class.
-
-    Do NOT gate this on `hasattr(transformers, "Qwen3VLImageProcessor")`. That
-    the class is currently absent from transformers is why the bug is *visible*
-    (load fails loudly today), not why the rewrite is *correct*; adding such a
-    gate would silently stop patching the day transformers ships the class and
-    load preprocessing the model author never specified.
-
-    Idempotent — returns True if it changed anything.
-    """
-    config_path = Path(local_dir) / "processor_config.json"
-    if not config_path.exists():
-        return False
-    content = config_path.read_text()
-    if '"Qwen3VLImageProcessor"' not in content:
-        return False
-    config_path.write_text(
-        content.replace('"Qwen3VLImageProcessor"', '"Qwen2VLImageProcessor"')
-    )
-    return True
-
-
 def load_model(
     model_id: str = DEFAULT_MODEL_ID, *, revision: str | None = DEFAULT_MODEL_REVISION
 ) -> tuple[Any, Any]:
-    """Download, patch, and load NuExtract3-MLX. Returns (model, processor).
+    """Download and load NuExtract3-MLX. Returns (model, processor).
 
     `revision` defaults to the pinned commit of DEFAULT_MODEL_ID, so a caller
     overriding `model_id` must pass its own revision (None tracks `main`).
+
+    The snapshot's processor_config.json is loaded as downloaded, on purpose.
+    It names "Qwen3VLImageProcessor" where the model author's own
+    numind/NuExtract3 names "Qwen2VLImageProcessor", but nothing here reads that
+    key: mlx_vlm.load() builds mlx-vlm's own Qwen3VLProcessor for qwen3_5
+    checkpoints, which takes only the geometry keys. Only transformers' own
+    AutoProcessor resolves the name, and without torchvision that path fails on
+    this checkpoint whichever name is there. A shim that rewrote it changed no
+    outcome, and it wrote through the HF cache symlink into the shared blob.
     """
     local_dir = snapshot_download(repo_id=model_id, revision=revision)
-    patch_processor_config(local_dir)
     return mlx_vlm_load(local_dir)
 
 

@@ -1,5 +1,4 @@
 import ast
-import json
 import re
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -16,43 +15,17 @@ from nuextract import (
     build_messages,
     extract_answer_block,
     load_model,
-    patch_processor_config,
     pretty_json_or_text,
     render_prompt,
     split_reasoning_and_output,
     stream_extract,
 )
 
-# --- patch_processor_config ---
-
-
-def test_patch_processor_config_replaces_string(tmp_path):
-    cfg = tmp_path / "processor_config.json"
-    cfg.write_text(json.dumps({"image_processor_type": "Qwen3VLImageProcessor"}))
-    changed = patch_processor_config(tmp_path)
-    assert changed is True
-    new_content = cfg.read_text()
-    assert "Qwen3VLImageProcessor" not in new_content
-    assert "Qwen2VLImageProcessor" in new_content
-
-
-def test_patch_processor_config_idempotent(tmp_path):
-    cfg = tmp_path / "processor_config.json"
-    cfg.write_text(json.dumps({"image_processor_type": "Qwen2VLImageProcessor"}))
-    changed = patch_processor_config(tmp_path)
-    assert changed is False
-    assert "Qwen2VLImageProcessor" in cfg.read_text()
-
-
-def test_patch_processor_config_missing_file(tmp_path):
-    assert patch_processor_config(tmp_path) is False
-
-
 # --- transformers compatibility invariants ---
 #
-# The transformers pin is load-bearing and these two facts are what make the
-# stack work. Both are model-free one-liners, so CI gates them instead of a
-# checklist item in CLAUDE.md that a future bump can quietly skip.
+# The transformers pin is load-bearing and this fact is what makes the stack
+# work. It is a model-free one-liner, so CI gates it instead of a checklist
+# item in CLAUDE.md that a future bump can quietly skip.
 
 
 def test_qwen3_5_is_in_the_auto_config_resolver():
@@ -64,17 +37,6 @@ def test_qwen3_5_is_in_the_auto_config_resolver():
     from transformers.models.auto.configuration_auto import CONFIG_MAPPING_NAMES
 
     assert "qwen3_5" in CONFIG_MAPPING_NAMES
-
-
-def test_qwen2_vl_image_processor_is_still_exported():
-    """patch_processor_config rewrites the config to name this class.
-
-    If a transformers bump removes or renames it, the shim would point the
-    processor at a class that cannot be resolved.
-    """
-    import transformers
-
-    assert hasattr(transformers, "Qwen2VLImageProcessor")
 
 
 # --- build_messages ---
@@ -327,17 +289,15 @@ def test_conftest_guard_blocks_a_forgotten_mock():
         _nuextract.mlx_vlm_load("/some/dir")
 
 
-def test_load_model_invokes_snapshot_and_patch_and_load():
-    """load_model orchestrates: snapshot_download → patch → mlx_vlm.load."""
+def test_load_model_invokes_snapshot_and_load():
+    """load_model orchestrates: snapshot_download → mlx_vlm.load."""
     with (
-        patch("nuextract.patch_processor_config") as mock_patch,
         patch("nuextract.snapshot_download", return_value="/fake/dir") as mock_dl,
         patch("nuextract.mlx_vlm_load", return_value=("M", "P")) as mock_load,
     ):
         model, processor = load_model("test/repo", revision="abc123")
 
     mock_dl.assert_called_once_with(repo_id="test/repo", revision="abc123")
-    mock_patch.assert_called_once_with("/fake/dir")
     mock_load.assert_called_once_with("/fake/dir")
     assert (model, processor) == ("M", "P")
 
@@ -345,7 +305,6 @@ def test_load_model_invokes_snapshot_and_patch_and_load():
 def test_load_model_pins_the_default_revision():
     """With no arguments, load_model fetches the pinned commit, never `main`."""
     with (
-        patch("nuextract.patch_processor_config"),
         patch("nuextract.snapshot_download", return_value="/fake/dir") as mock_dl,
         patch("nuextract.mlx_vlm_load", return_value=("M", "P")),
     ):
