@@ -31,6 +31,11 @@ from typing import Any
 from mlx_vlm import generate, load
 
 MODEL_ID = "numind/NuExtract3-mlx-8bits"
+# Copies of nuextract.DEFAULT_MODEL_ID / DEFAULT_MODEL_REVISION rather than imports:
+# this runs as a script, so the repo root is not on sys.path. The probe must load
+# the snapshot the app loads or its verdict says nothing about the app, which is
+# why tests/test_nuextract.py fails the moment either copy drifts.
+MODEL_REVISION = "bd8048c41019a63cdcbba93aa2dbfde06cbfc490"
 
 
 def _print_header(title: str) -> None:
@@ -72,12 +77,12 @@ def _render(processor: Any, messages: list[dict], **kwargs: Any) -> str:
 
 
 def main() -> int:
-    _print_header(f"Loading {MODEL_ID} via mlx_vlm.load()")
+    _print_header(f"Loading {MODEL_ID}@{MODEL_REVISION[:7]} via mlx_vlm.load()")
     try:
         # mlx-vlm returns dynamically-typed (model, processor) objects; treat them as
         # Any (as nuextract.load_model does). mlx-vlm annotates generate()'s processor
         # param as PreTrainedTokenizer but accepts a full processor at runtime.
-        loaded: tuple[Any, Any] = load(MODEL_ID)
+        loaded: tuple[Any, Any] = load(MODEL_ID, revision=MODEL_REVISION)
         model, processor = loaded
     except Exception as e:
         print(f"  [FAIL] load() raised: {type(e).__name__}: {e}")

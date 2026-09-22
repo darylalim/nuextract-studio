@@ -103,7 +103,7 @@ Exact values vary with the model; fields it can't fill come back `null` (here th
 uv run --frozen ruff check .      # Lint
 uv run --frozen ruff format .     # Format (add --check to verify without rewriting)
 uv run --frozen ty check          # Type check
-uv run --frozen pytest            # Tests (106)
+uv run --frozen pytest            # Tests (109)
 ```
 
 `--frozen` is not optional here. A bare `uv run` locks and syncs by default, so with an out-of-date `uv.lock` it silently rewrites the lock in your working tree — every gate then passes against the regenerated lock while the committed one stays stale, and CI's `uv sync --locked` fails on `main`.
@@ -132,7 +132,7 @@ scripts/
   probe_mlx_vlm.py                  # Verifies model + template kwargs flow-through end-to-end
 tests/
   conftest.py                       # sys.path setup + guard: no test may load a real model
-  test_nuextract.py                 # Wrapper tests (44)
+  test_nuextract.py                 # Wrapper tests (47)
   test_streamlit_app.py             # App helper tests (29)
   test_streamlit_app_apptest.py     # End-to-end UI tests via Streamlit AppTest (33)
 .githooks/
@@ -154,12 +154,12 @@ uv run --frozen ty check
 uv run --frozen pytest
 ```
 
-Add or update tests where practical; the suite mocks the model so it runs fast and needs no network (currently 106 tests). Enabling `git config core.hooksPath .githooks` runs all four of these gates, plus `uv lock --check`, automatically before each push. See [CLAUDE.md](CLAUDE.md) for an architecture overview.
+Add or update tests where practical; the suite mocks the model so it runs fast and needs no network (currently 109 tests). Enabling `git config core.hooksPath .githooks` runs all four of these gates, plus `uv lock --check`, automatically before each push. See [CLAUDE.md](CLAUDE.md) for an architecture overview.
 
 ## Acknowledgments
 
 - Mirrors the architecture of the official [NuExtract3 Hugging Face Space](https://huggingface.co/spaces/numind/NuExtract3) (MIT) by [NuMind](https://numind.ai), reimplemented for local Apple Silicon inference.
-- Uses the [`numind/NuExtract3`](https://huggingface.co/numind/NuExtract3) model (Apache-2.0, built on Qwen3.5-4B), run via the [`numind/NuExtract3-mlx-8bits`](https://huggingface.co/numind/NuExtract3-mlx-8bits) quantization. The model weights are downloaded at runtime and are not redistributed by this project.
+- Uses the [`numind/NuExtract3`](https://huggingface.co/numind/NuExtract3) model (Apache-2.0, built on Qwen3.5-4B), run via the [`numind/NuExtract3-mlx-8bits`](https://huggingface.co/numind/NuExtract3-mlx-8bits) quantization. The model weights are downloaded at runtime, pinned to a fixed upstream commit, and are not redistributed by this project.
 - Built on [mlx-vlm](https://github.com/Blaizzy/mlx-vlm) and [Streamlit](https://streamlit.io).
 
 ## License
