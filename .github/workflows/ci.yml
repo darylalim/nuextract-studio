@@ -34,10 +34,12 @@ jobs:
 
       - name: Install uv
         # Exact tag, not @v10: setup-uv stopped publishing moving major tags
-        # after v7, so @v10 does not resolve.
-        uses: astral-sh/setup-uv@v10.0.1
+        # after v7, so @v10 does not resolve. Bump it together with `version:`
+        # below — each setup-uv release ships the known checksums for the uv
+        # releases up to its own date (v10.2.0 is the first to know 0.12.17).
+        uses: astral-sh/setup-uv@v10.2.0
         with:
-          version: "0.12.4"
+          version: "0.12.17"
           enable-cache: true
 
       # --locked, not --frozen: it also asserts uv.lock still matches
