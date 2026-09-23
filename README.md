@@ -15,9 +15,9 @@ Streamlit application for structured extraction, document understanding, and tem
 - **Multimodal input** — upload an image (screenshot, scan, photo) and/or paste text
 - **Typed template system** — `verbatim-string`, `string`, `integer`, `number`, `date`, `boolean`, enums, multi-enums, and more (see [TYPES.md on Hugging Face](https://huggingface.co/numind/NuExtract3/blob/main/TYPES.md))
 - **Custom instructions** — an optional free-text field to steer extraction (e.g. "use British date format")
-- **Tunable generation** — temperature (0.0–1.0, default 0.0) and max-tokens (256–8192, default 4096) sliders
+- **Tunable generation** — temperature (0.0–1.0, default 0.0) and max-tokens (256–8192, default 4096) sliders in the sidebar
 - **Streaming output** — results stream in token-by-token
-- **Optional reasoning mode** — for Extract JSON and Convert to Markdown, the model emits `<think>...</think>` traces shown in a dedicated pane (template generation always runs without reasoning)
+- **Optional reasoning mode** — for Extract JSON and Convert to Markdown, the model emits `<think>...</think>` traces shown in a Reasoning pane that appears while the sidebar's **Reasoning** toggle is on (template generation always runs without reasoning)
 - **Download buttons** — save the JSON, markdown, or generated template to disk
 - **Local Apple Silicon inference** — no API key or network calls during extraction
 
@@ -45,7 +45,7 @@ uv sync
 uv run streamlit run streamlit_app.py   # opens http://localhost:8501
 ```
 
-**First run** downloads the ~5 GB model (on top of the Python dependencies pulled during `uv sync`), so budget a few minutes on a typical connection. The whole interface — inputs, action buttons, and both output panes — is on screen right away, with a "Loading model (first run downloads ~5 GB)" spinner sitting where results will appear. Anything you type or upload while the download runs is kept and applied once the model is ready, though the app can't redraw until then, so the image preview won't show yet. Download progress prints in the terminal, not the browser. Later runs load from the local Hugging Face cache in seconds. Press Ctrl-C in the terminal to stop the app.
+**First run** downloads the ~5 GB model (on top of the Python dependencies pulled during `uv sync`), so budget a few minutes on a typical connection. The whole interface — sidebar settings, input tabs, action buttons, and the Result pane — is on screen right away, with a "Loading model (first run downloads ~5 GB)" spinner sitting where results will appear. Anything you type or upload while the download runs is kept and applied once the model is ready, though the app can't redraw until then, so the image preview won't show yet. Download progress prints in the terminal, not the browser. Later runs load from the local Hugging Face cache in seconds. Press Ctrl-C in the terminal to stop the app.
 
 ## Modes
 
@@ -59,9 +59,9 @@ uv run streamlit run streamlit_app.py   # opens http://localhost:8501
 
 The app opens with a ready-to-use JSON template, so you can extract from plain text with no setup:
 
-1. Paste text into the **Text** box, e.g.:
+1. On the **Document** tab, paste text into the **Text** box, e.g.:
    > Acme Corp reported Q3 revenue of $4.2M on 2025-09-30, up from $3.1M a year earlier.
-2. Leave the default **Template (JSON)** as-is (it extracts `title`, `entities`, `dates`, and `amounts`).
+2. Leave the default template on the **Template** tab as-is (it extracts `title`, `entities`, `dates`, and `amounts`).
 3. Click **Extract JSON**.
 
 JSON streams into the Result pane, for example:
@@ -93,7 +93,7 @@ Exact values vary with the model; fields it can't fill come back `null` (here th
 - **`command not found: uv`** — install uv (see [Quickstart](#quickstart)), then restart your shell.
 - **Not on Apple Silicon** — MLX runs only on Apple-Silicon Macs (M1–M4). On Intel Macs, Linux, or Windows the model will fail to load and there is no CPU/CUDA fallback. Use the [hosted HF Space](https://huggingface.co/spaces/numind/NuExtract3) instead.
 - **First run looks stuck / Result pane spins** — it's downloading the ~5 GB model; watch progress in the terminal, not the browser. The rest of the interface is already on screen meanwhile. Interrupted downloads resume on the next run (Hugging Face caches partial files).
-- **"Model failed to load"** — the error is shown in the Output pane with a **Retry model load** button. The failure is cached deliberately, so it won't retry itself on every click elsewhere in the app; use the button once you've fixed the cause.
+- **"Model failed to load"** — the error is shown in the Result pane with a **Retry model load** button. The failure is cached deliberately, so it won't retry itself on every click elsewhere in the app; use the button once you've fixed the cause.
 - **Out of memory or very slow generation** — the 8-bit model needs ~5–6 GB of unified memory plus KV cache. On 16 GB machines, close other apps, lower **Max tokens**, and keep inputs shorter.
 - **`Unrecognized image processor`, or `requires the PyTorch library` / `requires the Torchvision library`** — don't install PyTorch: the app doesn't use it. These messages come from transformers after mlx-vlm's own processor failed to load, and they hide the real error. Run `uv sync` to restore the pinned versions (notably `mlx-vlm==0.7.2` and `transformers==5.17.0`) and avoid upgrading them manually; if the error persists, the *No torch* entry in [CLAUDE.md](CLAUDE.md) shows how to surface the underlying cause.
 
@@ -103,7 +103,7 @@ Exact values vary with the model; fields it can't fill come back `null` (here th
 uv run --frozen ruff check .      # Lint
 uv run --frozen ruff format .     # Format (add --check to verify without rewriting)
 uv run --frozen ty check          # Type check
-uv run --frozen pytest            # Tests (106)
+uv run --frozen pytest            # Tests (110)
 ```
 
 `--frozen` is not optional here. A bare `uv run` locks and syncs by default, so with an out-of-date `uv.lock` it silently rewrites the lock in your working tree — every gate then passes against the regenerated lock while the committed one stays stale, and CI's `uv sync --locked` fails on `main`.
@@ -125,7 +125,7 @@ git config core.hooksPath .githooks
 ## Project Structure
 
 ```
-streamlit_app.py                    # UI: two-pane layout, buttons + streamed output in an st.fragment
+streamlit_app.py                    # UI: settings sidebar, tabbed inputs, buttons + streamed output in an st.fragment
 nuextract.py                        # mlx-vlm wrapper: load, render prompt, stream extraction
 pyproject.toml                      # Dependencies (pinned) + ruff/ty/pytest config
 scripts/
@@ -133,8 +133,8 @@ scripts/
 tests/
   conftest.py                       # sys.path setup + guard: no test may load a real model
   test_nuextract.py                 # Wrapper tests (44)
-  test_streamlit_app.py             # App helper tests (29)
-  test_streamlit_app_apptest.py     # End-to-end UI tests via Streamlit AppTest (33)
+  test_streamlit_app.py             # App helper tests (30)
+  test_streamlit_app_apptest.py     # End-to-end UI tests via Streamlit AppTest (36)
 .githooks/
   pre-push                          # Runs uv lock --check + all four gates before a push
                                     # (opt-in: git config core.hooksPath .githooks)
@@ -154,7 +154,7 @@ uv run --frozen ty check
 uv run --frozen pytest
 ```
 
-Add or update tests where practical; the suite mocks the model so it runs fast and needs no network (currently 106 tests). Enabling `git config core.hooksPath .githooks` runs all four of these gates, plus `uv lock --check`, automatically before each push. See [CLAUDE.md](CLAUDE.md) for an architecture overview.
+Add or update tests where practical; the suite mocks the model so it runs fast and needs no network (currently 110 tests). Enabling `git config core.hooksPath .githooks` runs all four of these gates, plus `uv lock --check`, automatically before each push. See [CLAUDE.md](CLAUDE.md) for an architecture overview.
 
 ## Acknowledgments
 

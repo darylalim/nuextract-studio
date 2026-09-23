@@ -151,30 +151,88 @@ def test_no_warnings_or_errors_on_initial_load(at):
     assert len(at.warning) == 0
 
 
+def test_settings_sit_in_the_sidebar_and_inputs_in_two_tabs(at):
+    """The layout contract: generation settings in the sidebar, document and
+    template inputs split across two tabs, nothing left in the main area's
+    flow. Pinned by key so a widget drifting back into the main column, or into
+    the wrong tab, fails here rather than only in a screenshot."""
+    assert [s.key for s in at.sidebar.slider] == [
+        "temperature_slider",
+        "max_tokens_slider",
+    ]
+    assert [t.key for t in at.sidebar.toggle] == ["reasoning_checkbox"]
+    # Settings only: the model name was removed from the sidebar by request.
+    assert not at.sidebar.caption
+
+    document, template = at.tabs
+    assert document.label.endswith("Document")
+    assert template.label.endswith("Template")
+    assert [u.key for u in document.get("file_uploader")] == ["image_input"]
+    assert [t.key for t in document.text_area] == ["text_input"]
+    assert [t.key for t in template.text_area] == [
+        "template_input",
+        "instructions_input",
+    ]
+
+
+def test_reasoning_pane_appears_only_while_the_toggle_is_on(at, stream_captor):
+    """Off is the default, and the pane used to spend a header plus a
+    "(reasoning disabled)" caption above the Result on every run regardless.
+
+    Asserted after a completed run rather than on the idle page, which never
+    painted that caption — a header-less placeholder kept for toggle-off runs
+    would pass an idle-only check. Switching the toggle on then replays that
+    reasoning-off run, so the pane must say reasoning was disabled for it, not
+    sit on the "(no run yet)" caption beside a finished result.
+    """
+    _, set_chunks = stream_captor
+    set_chunks('{"k": 1}')
+
+    at.text_area(key="text_input").set_value("doc text")
+    at.button(key="extract_button").click()
+    at.run()
+
+    assert any('"k": 1' in c.value for c in at.code)
+    assert "**Reasoning**" not in [m.value for m in at.markdown]
+    assert not any("reasoning disabled" in c.value for c in at.caption)
+
+    at.toggle(key="reasoning_checkbox").set_value(True)
+    at.run()
+
+    captions = [c.value for c in at.caption]
+    assert "**Reasoning**" in [m.value for m in at.markdown]
+    assert any("reasoning disabled" in c for c in captions)
+    assert not any("no run yet" in c for c in captions)
+
+
 def test_model_loads_after_the_page_chrome_renders(monkeypatch, cold_model_cache):
     """The ~5 GB load must run below *everything* that doesn't depend on it.
 
     Streamlit emits a UI delta per st.* call, so a blocking load stops every
     element after it from painting until it returns. Nothing but an actual
-    generation needs the model, so both the left column's inputs and the right
-    column's own chrome (action buttons, pane headers) must render first.
+    generation needs the model, so the sidebar's settings, the left column's
+    inputs and the right column's own chrome (action buttons, pane headers)
+    must all render first.
 
     Asserted structurally rather than by timing, since render order is not
     observable from AppTest: keyed widgets register themselves in session_state
     as they render, so an anchor key is present when load_model is called if
     and only if that widget already ran.
 
-    Both anchors are the *last* keyed widget of their group, and that is the
+    Every anchor is the *last* keyed widget of its group, and that is the
     whole point — an anchor further up still passes with the load sitting in
     the middle of the group it is supposed to be guarding. reasoning_checkbox
-    is the last of col_left's 7 inputs (template_input, the 3rd, would let the
-    load sit mid-column); template_button is the last of the three action
-    buttons.
+    is the last of the sidebar's 3 settings; instructions_input is the last of
+    the left column's 4 inputs (template_input, the 3rd, would let the load sit
+    mid-column); template_button is the last of the three action buttons. The
+    sidebar and the left column get one anchor each because neither follows
+    from the other: each can be moved below the load independently.
     """
     seen: dict = {}
 
     def record() -> None:
-        seen["inputs"] = "reasoning_checkbox" in st.session_state
+        seen["settings"] = "reasoning_checkbox" in st.session_state
+        seen["inputs"] = "instructions_input" in st.session_state
         seen["chrome"] = "template_button" in st.session_state
 
     _stub_model_loading(monkeypatch, on_load=record)
@@ -182,9 +240,12 @@ def test_model_loads_after_the_page_chrome_renders(monkeypatch, cold_model_cache
     at = AppTest.from_file(APP_PATH)
     at.run()
 
-    # Without this, a crash before either anchor leaves `seen` empty and the
+    # Without this, a crash before any anchor leaves `seen` empty and the
     # assertions below fail with a message blaming the wrong thing.
     assert not at.exception
+    assert seen.get("settings") is True, (
+        "get_model() ran before the sidebar finished — move it below st.sidebar"
+    )
     assert seen.get("inputs") is True, (
         "get_model() ran before the left column finished — move it below col_left"
     )
@@ -214,13 +275,14 @@ def test_idle_hint_cleared_after_run(at, stream_captor):
     assert any('"k": 1' in c.value for c in at.code)
 
 
-def test_completed_run_survives_a_left_column_edit(at, stream_captor):
+def test_completed_run_survives_an_input_edit(at, stream_captor):
     """A finished result outlives a full rerun.
 
-    The input widgets sit outside the fragment, so touching one re-runs the whole
-    script: the three placeholders are re-created empty with none of the generate
-    buttons pressed. That used to repaint the idle hint over a result that cost a
-    full local generation, and drop its download button with it.
+    The input widgets sit outside the fragment — in the sidebar and in the left
+    column's tabs — so touching one re-runs the whole script: the placeholders
+    are re-created empty with none of the generate buttons pressed. That used
+    to repaint the idle hint over a result that cost a full local generation,
+    and drop its download button with it.
     """
     _, set_chunks = stream_captor
     set_chunks('{"k": 1}')
@@ -231,13 +293,51 @@ def test_completed_run_survives_a_left_column_edit(at, stream_captor):
     assert any('"k": 1' in c.value for c in at.code)
     assert len(at.download_button) == 1
 
-    # A left-column widget, so this is a full rerun and no button is pressed.
+    # A sidebar widget, so this is a full rerun and no button is pressed.
     at.slider(key="temperature_slider").set_value(0.5)
     at.run()
 
     assert any('"k": 1' in c.value for c in at.code)
     assert len(at.download_button) == 1
     assert not any("Choose an action" in c.value for c in at.caption)
+
+
+def test_switching_reasoning_off_hides_a_stored_trace_without_leaking_it(
+    at_with_image, stream_captor
+):
+    """The replay paints with the pane that exists *now*.
+
+    Turning the toggle off after a reasoning run is a full rerun that replays
+    the stored run with no Reasoning pane at all. The trace must still be split
+    off rather than dumped into the Result pane, and turning the toggle back on
+    must bring it back, since the stored run still carries it.
+
+    Markdown mode on purpose: in extract mode the final pass's
+    extract_answer_block digs the JSON out of the trace by itself, so a replay
+    that skipped the split would still pass there.
+    """
+    at = at_with_image
+    _, set_chunks = stream_captor
+    set_chunks("thinking step by step</think># Title\n\nbody")
+
+    at.toggle(key="reasoning_checkbox").set_value(True)
+    at.button(key="markdown_button").click()
+    at.run()
+    assert any("thinking step by step" in c.value for c in at.code)
+
+    at.toggle(key="reasoning_checkbox").set_value(False)
+    at.run()
+
+    rendered = [m.value for m in at.markdown] + [c.value for c in at.code]
+    assert "# Title\n\nbody" in rendered
+    assert not any("thinking step by step" in r for r in rendered)
+    assert "**Reasoning**" not in rendered
+    assert len(at.download_button) == 1
+
+    at.toggle(key="reasoning_checkbox").set_value(True)
+    at.run()
+
+    assert any("thinking step by step" in c.value for c in at.code)
 
 
 # --- Extract button validation ---
@@ -421,7 +521,7 @@ def test_failed_run_does_not_replay_the_previous_result(at, monkeypatch):
     assert any("model crashed" in e.value for e in at.error)
     assert not at.download_button
 
-    # A left-column widget: a full rerun with no button pressed, i.e. the replay
+    # A sidebar widget: a full rerun with no button pressed, i.e. the replay
     # path. The crashed run left nothing to replay, so nothing may come back.
     at.slider(key="temperature_slider").set_value(0.5)
     at.run()
@@ -437,7 +537,9 @@ def test_validation_failure_leaves_the_reasoning_pane_captioned(at):
     The idle branch is skipped whenever a button fired, so a warning-only run
     used to leave the bold "Reasoning" header over an unwritten placeholder —
     the void the caption exists to remove — on the most likely first interaction.
+    The pane exists only while the toggle is on, so switch it on first.
     """
+    at.toggle(key="reasoning_checkbox").set_value(True)
     at.button(key="extract_button").click()
     at.run()
 
@@ -553,7 +655,9 @@ def test_template_gen_passes_system_prompt(at, stream_captor):
 def test_template_gen_forces_reasoning_off(at, stream_captor):
     """Template-gen overrides the reasoning toggle: enable_thinking is always
     False even when the user has reasoning on (the Jinja only allows thinking
-    for structured/content modes)."""
+    for structured/content modes). The pane is still shown, since the toggle is
+    on, so it has to say reasoning was off for this run rather than keep its
+    "(no run yet)" caption beside a finished result."""
     captured, set_chunks = stream_captor
     set_chunks('{"field_a": "string"}')
 
@@ -563,6 +667,9 @@ def test_template_gen_forces_reasoning_off(at, stream_captor):
     at.run()
 
     assert captured["enable_thinking"] is False
+    captions = [c.value for c in at.caption]
+    assert any("reasoning disabled" in c for c in captions)
+    assert not any("no run yet" in c for c in captions)
 
 
 # --- Streaming flow with image (file_uploader patched via at_with_image) ---
