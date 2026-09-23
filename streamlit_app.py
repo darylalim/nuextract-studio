@@ -132,7 +132,7 @@ def _validate_template(template_str: str) -> tuple[dict | None, str | None]:
 
 def _render_output_pane(
     output_placeholder: Any,
-    reasoning_placeholder: Any,
+    reasoning_placeholder: Any | None,
     accumulated: str,
     *,
     reasoning_enabled: bool,
@@ -141,13 +141,19 @@ def _render_output_pane(
 ) -> None:
     """Update the reasoning + output panes from a single accumulated stream chunk.
 
+    `reasoning_placeholder` is None while the Reasoning pane is hidden (the
+    toggle is off). The trace is still split off below, so it stays out of
+    the Result pane even when it isn't shown.
+
     `final` marks the one call made after the stream completes. Only then does
     the text satisfy extract_answer_block's whole-document contract — see the
     structured branch below.
     """
     think, output = split_reasoning_and_output(accumulated, reasoning_enabled)
 
-    if reasoning_enabled:
+    if reasoning_placeholder is None:
+        pass
+    elif reasoning_enabled:
         if think:
             # st.code, not a hand-built ```text fence: `think` is untrusted model
             # output, and a fence inside it would close ours and hand the rest to
@@ -167,6 +173,9 @@ def _render_output_pane(
         else:
             reasoning_placeholder.caption("_(no reasoning yet)_")
     else:
+        # The pane is shown but the run being painted had reasoning off: template
+        # generation, which always forces it off, or a replayed run made before
+        # the toggle was switched on.
         reasoning_placeholder.caption("_(reasoning disabled)_")
 
     if not output:
@@ -245,7 +254,10 @@ def _render_completed_run(
     download_placeholder: Any,
     streamed_live: bool = False,
 ) -> None:
-    """Paint the terminal state of a finished run: both panes, then the download.
+    """Paint the terminal state of a finished run: its panes, then the download.
+
+    The Reasoning pane is painted only when shown — its placeholder is None
+    while the toggle is off (see `_render_output_pane`).
 
     The single implementation behind both the just-finished path in `_run_mode`
     and the replay in `_output_section`, so the two cannot drift about what a
@@ -353,7 +365,8 @@ def _run_mode(
             # Actionable: the run did work, it just never got to an answer.
             output_placeholder.warning(
                 "The model spent its whole token budget reasoning and never "
-                "reached an answer. Raise Max tokens, or turn Reasoning off."
+                "reached an answer. Raise Max tokens in the sidebar, or turn "
+                "Reasoning off."
             )
         else:
             output_placeholder.warning("Empty output from model.")
@@ -386,28 +399,36 @@ def _output_section() -> None:
     """Fragment: action buttons + the streamed reasoning/result/download panes.
 
     Isolated in a fragment so clicking a generate button reruns only this
-    region — the input widgets in the left column keep their state and are not
-    re-rendered while a generation runs. The buttons live inside the fragment
-    because that is what gives this isolation by default: a fragment reruns on
-    its own when the triggering widget is inside it. (Since Streamlit 1.63 an
-    outside widget can also target a keyed fragment via st.rerun("<key>") from
-    a callback — more machinery for the same result here.) Input values are
-    read from session_state, which the keyed left-column widgets populate on
-    the full rerun that precedes this fragment.
+    region — the input widgets in the sidebar and left column keep their state
+    and are not re-rendered while a generation runs. The buttons live inside
+    the fragment because that is what gives this isolation by default: a
+    fragment reruns on its own when the triggering widget is inside it. (Since
+    Streamlit 1.63 an outside widget can also target a keyed fragment via
+    st.rerun("<key>") from a callback — more machinery for the same result
+    here.) Input values are read from session_state, which the keyed widgets
+    outside this fragment populate on the full rerun that precedes it.
 
     Loads the model itself rather than taking it as an argument, so the load
     can sit below this section's own chrome instead of above it — see the
     comment on the load below.
     """
+    # The primary action gets its own row and the two secondary modes share the
+    # next. All three on one row need ~493px (measured natural widths plus
+    # gaps), and with the sidebar open this column only reaches that from a
+    # ~1480px viewport up. Below it — including the 13-inch MacBook Air's 1440
+    # and 1470px — a single horizontal container wrapped and left "Generate
+    # template" stretched full-width on a row of its own, outweighing the
+    # primary action. Two deliberate rows look the same at every width; the
+    # secondary pair alone needs ~351px, which fits from ~1200px up.
+    btn_extract = st.button(
+        "Extract JSON",
+        help="Needs a valid JSON template, plus an image or text.",
+        type="primary",
+        icon=":material/data_object:",
+        width="stretch",
+        key="extract_button",
+    )
     with st.container(horizontal=True):
-        btn_extract = st.button(
-            "Extract JSON",
-            help="Needs a valid JSON template, plus an image or text.",
-            type="primary",
-            icon=":material/data_object:",
-            width="stretch",
-            key="extract_button",
-        )
         btn_markdown = st.button(
             "Convert to Markdown",
             help="Needs an image of the document.",
@@ -423,21 +444,32 @@ def _output_section() -> None:
             key="template_button",
         )
 
-    st.markdown("**Reasoning**")
-    reasoning_placeholder = st.empty()
-    # Painted at creation, not only on the idle path: every path that ends without
-    # a trace leaves this placeholder unwritten — a validation warning, an empty
-    # stream — and a bold header over an unwritten st.empty() renders as a void.
-    # Streaming, the replay and the reasoning-disabled caption all overwrite it.
-    reasoning_placeholder.caption("_(no run yet)_")
+    # The Reasoning pane exists only while the toggle is on. Off is the default,
+    # and an always-present pane spent a header and a "(reasoning disabled)"
+    # caption above the Result on every run. Keyed to the toggle rather than to
+    # the run: when a button fires the toggle *is* the run's setting, and on a
+    # replay the pane follows the current choice, so switching reasoning off
+    # hides a stored trace and switching it back on replays it.
+    reasoning = st.session_state.get("reasoning_checkbox", False)
+    reasoning_placeholder = None
+    if reasoning:
+        st.markdown("**Reasoning**")
+        reasoning_placeholder = st.empty()
+        # Painted at creation, not only on the idle path: every path that ends
+        # without a trace leaves this placeholder unwritten — a validation
+        # warning, an empty stream — and a bold header over an unwritten
+        # st.empty() renders as a void. Streaming, the replay and the
+        # reasoning-disabled caption all overwrite it.
+        reasoning_placeholder.caption("_(no run yet)_")
     st.markdown("**Result**")
     output_placeholder = st.empty()
     download_placeholder = st.empty()
 
-    # The load runs here, after the buttons and both pane headers have claimed
-    # their positions, so the whole page is painted before it blocks: Streamlit
-    # emits a UI delta per st.* call, so only what follows this line waits on
-    # it. The wait shows inside the Result slot, where the output will land.
+    # The load runs here, after the buttons and the pane headers (Reasoning only
+    # while the toggle is on) have claimed their positions, so the whole page is
+    # painted before it blocks: Streamlit emits a UI delta per st.* call, so
+    # only what follows this line waits on it. The wait shows inside the Result
+    # slot, where the output will land.
     with output_placeholder.container():
         with st.spinner("Loading model (first run downloads ~5 GB)...", show_time=True):
             loaded = get_model()
@@ -493,9 +525,9 @@ def _output_section() -> None:
             output_placeholder.caption("Choose an action above to generate output.")
         else:
             # Replay rather than paint the idle hint over a result that cost a
-            # whole local generation: the left-column widgets sit outside this
-            # fragment, so touching any of them is a full rerun that re-creates
-            # all three placeholders empty with no button pressed.
+            # whole local generation: the sidebar and left-column widgets sit
+            # outside this fragment, so touching any of them is a full rerun
+            # that re-creates the placeholders empty with no button pressed.
             _render_completed_run(
                 last_run,
                 output_placeholder=output_placeholder,
@@ -503,14 +535,14 @@ def _output_section() -> None:
                 download_placeholder=download_placeholder,
             )
 
-    # Inputs live in the left column (outside this fragment); read their current
-    # values from session_state via their widget keys.
+    # Inputs live in the left column and the sidebar (outside this fragment);
+    # read their current values from session_state via their widget keys.
+    # `reasoning` was read above, where it decided whether the pane exists.
     image_path = _save_uploaded_image(st.session_state.get("image_input"))
     text = st.session_state.get("text_input", "")
     template_str = st.session_state.get("template_input", "")
     instructions = st.session_state.get("instructions_input", "")
     temperature = st.session_state.get("temperature_slider", DEFAULT_TEMPERATURE)
-    reasoning = st.session_state.get("reasoning_checkbox", False)
     max_tokens = st.session_state.get("max_tokens_slider", DEFAULT_MAX_TOKENS)
 
     if btn_extract:
@@ -593,117 +625,134 @@ st.set_page_config(
     page_icon=":material/document_scanner:",
     layout="wide",
 )
-st.title("NuExtract Studio")
+st.title("NuExtract Studio", icon=":material/document_scanner:")
 
-col_left, col_right = st.columns([1, 1], gap="medium")
-
-with col_left:
-    st.subheader("Input")
-    uploaded_image = st.file_uploader(
-        "Image",
-        type=["jpg", "jpeg", "png", "webp"],
-        help="JPG, PNG, or WEBP image of the document.",
-        # A browser-side bound only, in megabytes. Streamlit's upload route
-        # enforces server.maxUploadSize and never reads this value, so this
-        # rejects an oversized file in the widget before it uploads rather than
-        # guaranteeing anything server-side. It does not bound decode memory
-        # either: a 1 MB flat-colour 10000x10000 PNG still expands to ~300 MB of
-        # pixels. Kept for the widget hint, which is the part users actually see —
-        # a real server-side bound would mean server.maxUploadSize in a
-        # .streamlit/config.toml this repo deliberately does not ship.
-        max_upload_size=_MAX_IMAGE_UPLOAD_MB,
-        key="image_input",
+# Generation settings live in the sidebar: they apply to every mode and rarely
+# change between runs, so they should not compete with the document and the
+# template for the main area's height. They sat under the template editor
+# before, below the fold. Keyed like every input, and rendered before the main
+# area, so the fragment's model load still waits for them (see col_right).
+with st.sidebar:
+    st.subheader("Settings", icon=":material/tune:")
+    st.slider(
+        "Temperature",
+        0.0,
+        1.0,
+        DEFAULT_TEMPERATURE,
+        0.05,
+        help="0 is deterministic; raise for more varied output.",
+        key="temperature_slider",
     )
-    if uploaded_image is not None:
-        # A fixed height, not a cap — there is no max-height container, and
-        # st.image has no height parameter. The input this app is built for is a
-        # document page: a portrait scan is ~1.4x taller than this column is wide,
-        # so without this it pushes the template editor and both sliders below the
-        # fold the moment an image is attached, exactly when you want to edit
-        # them. Tall images scroll inside the box; the cost is that anything
-        # shorter than 320px is padded. border=False is explicit because a
-        # fixed-height container draws one by default.
-        with st.container(height=320, border=False):
-            st.image(uploaded_image, width="stretch")
-
-    # Keyed inputs feed session_state; the _output_section fragment reads their
-    # values by key rather than capturing the return values here.
-    st.text_area(
-        "Text (optional)",
-        height=100,
-        placeholder="Paste document text here, or use the image above.",
-        key="text_input",
+    st.slider(
+        "Max tokens",
+        256,
+        8192,
+        DEFAULT_MAX_TOKENS,
+        256,
+        help="Upper bound on generated tokens.",
+        key="max_tokens_slider",
     )
-
-    st.space("medium")
-    st.markdown("**Template (JSON)**")
-    st.caption(
-        "Describe each field with a type hint, e.g. string, number, or YYYY-MM-DD."
-    )
-    st.text_area(
-        # Collapsed, but still the widget's accessible name — so it has to match
-        # the "Template (JSON)" heading a sighted user reads above it.
-        "Template (JSON)",
-        value=DEFAULT_TEMPLATE,
-        height=320,
-        label_visibility="collapsed",
-        key="template_input",
-    )
-
-    st.text_area(
-        # 98 is the floor Streamlit enforces for a visible label, not a chosen
-        # size: the 80 that used to sit here was silently clamped up to it, so the
-        # number read as intent while doing nothing. Stating the floor keeps the
-        # rendering identical and makes the constraint visible. Dropping the
-        # parameter instead would take the default — three lines, i.e. *taller*
-        # than the Text box above — inverting the intent this field was written with.
-        "Instructions (optional)",
-        height=98,
-        placeholder="Extra guidance for the model, e.g. 'use British date format'.",
-        key="instructions_input",
-    )
-
-    col_temp, col_tokens = st.columns(2)
-    with col_temp:
-        st.slider(
-            "Temperature",
-            0.0,
-            1.0,
-            DEFAULT_TEMPERATURE,
-            0.05,
-            help="0 is deterministic; raise for more varied output.",
-            key="temperature_slider",
-        )
-    with col_tokens:
-        st.slider(
-            "Max tokens",
-            256,
-            8192,
-            DEFAULT_MAX_TOKENS,
-            256,
-            help="Upper bound on generated tokens.",
-            key="max_tokens_slider",
-        )
-    # Own full-width line so the "Reasoning" label never wraps (it did when
-    # squeezed into a narrow middle column alongside the two sliders).
     # st.toggle, not st.checkbox: this is an app setting that changes how a run
     # behaves, and the bundled selection-widgets.md for this pin reserves the
-    # checkbox for forms. The key keeps its original name — it is the anchor
-    # test_model_loads_after_the_page_chrome_renders asserts on, and churning a
-    # load-bearing identifier for cosmetics is not worth it.
+    # checkbox for forms. The key keeps its original name — it is one of the
+    # anchors test_model_loads_after_the_page_chrome_renders asserts on, and
+    # churning a load-bearing identifier for cosmetics is not worth it.
     st.toggle(
         "Reasoning",
         value=False,
         help=(
-            "Show the model's `<think>` trace in the Reasoning pane. Ignored by "
-            "**Generate template** — the model's template only permits reasoning "
-            "for extraction and Markdown."
+            "Show the model's `<think>` trace in a Reasoning pane above the "
+            "result. Ignored by **Generate template** — the model's template "
+            "only permits reasoning for extraction and Markdown."
         ),
         key="reasoning_checkbox",
     )
 
+col_left, col_right = st.columns([1, 1], gap="medium")
+
+with col_left:
+    # Two tabs rather than one tall column: stacked, the preview, text, template
+    # and instructions ran well past the fold. Both tabs' widgets must still run
+    # on every full rerun — the default on_change="ignore" computes every tab —
+    # because the fragment reads them from session_state by key, and Streamlit
+    # drops the state of a widget that skips a run. Gating a tab's body on
+    # `.open` (lazy tabs) would make Extract see an empty template whenever the
+    # Document tab was showing.
+    tab_document, tab_template = st.tabs(
+        [":material/description: Document", ":material/schema: Template"]
+    )
+
+    with tab_document:
+        uploaded_image = st.file_uploader(
+            "Image",
+            type=["jpg", "jpeg", "png", "webp"],
+            help="JPG, PNG, or WEBP image of the document.",
+            # A browser-side bound only, in megabytes. Streamlit's upload route
+            # enforces server.maxUploadSize and never reads this value, so this
+            # rejects an oversized file in the widget before it uploads rather
+            # than guaranteeing anything server-side. It does not bound decode
+            # memory either: a 1 MB flat-colour 10000x10000 PNG still expands to
+            # ~300 MB of pixels. Kept for the widget hint, which is the part
+            # users actually see — a real server-side bound would mean
+            # server.maxUploadSize in a .streamlit/config.toml this repo
+            # deliberately does not ship.
+            max_upload_size=_MAX_IMAGE_UPLOAD_MB,
+            key="image_input",
+        )
+        if uploaded_image is not None:
+            # A fixed height, not a cap — there is no max-height container, and
+            # st.image has no height parameter. The input this app is built for
+            # is a document page: a portrait scan is ~1.4x taller than this
+            # column is wide, so without this it pushes the Text box below the
+            # fold the moment an image is attached. 360 rather than the 320 it
+            # was when the template editor shared this column: measured in a
+            # 839px-tall viewport, it is the tallest box that still keeps the
+            # whole Text box on screen beneath it (400 cut it off by 30px).
+            # Tall images scroll inside the box; the cost is that anything
+            # shorter than the box is padded. border=False is explicit because
+            # a fixed-height container draws one by default.
+            with st.container(height=360, border=False):
+                st.image(uploaded_image, width="stretch")
+
+        # Keyed inputs feed session_state; the _output_section fragment reads
+        # their values by key rather than capturing the return values here.
+        st.text_area(
+            "Text (optional)",
+            height=100,
+            placeholder="Paste document text here, or use the image above.",
+            key="text_input",
+        )
+
+    with tab_template:
+        st.caption(
+            "Describe each field with a type hint, e.g. string, number, or YYYY-MM-DD."
+        )
+        st.text_area(
+            # Collapsed because the tab already names it, but still the widget's
+            # accessible name, so it stays close to the tab label a sighted user
+            # reads.
+            "Template (JSON)",
+            value=DEFAULT_TEMPLATE,
+            height=320,
+            label_visibility="collapsed",
+            key="template_input",
+        )
+
+        st.text_area(
+            # 98 is the floor Streamlit enforces for a visible label, not a
+            # chosen size: the 80 that used to sit here was silently clamped up
+            # to it, so the number read as intent while doing nothing. Stating
+            # the floor keeps the rendering identical and makes the constraint
+            # visible. Dropping the parameter instead would take the default —
+            # three lines, i.e. *taller* than the Text box — inverting the
+            # intent this field was written with.
+            "Instructions (optional)",
+            height=98,
+            placeholder="Extra guidance for the model, e.g. 'use British date format'.",
+            key="instructions_input",
+        )
+
 with col_right:
-    st.subheader("Output")
     # No model load here: _output_section loads it itself, below its own buttons
     # and pane headers, so nothing on the page waits on the ~5 GB download
     # except the Result slot the output lands in.

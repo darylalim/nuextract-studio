@@ -39,9 +39,10 @@ def app():
         stack.enter_context(patch.object(st, "slider", return_value=0.0))
         stack.enter_context(patch.object(st, "toggle", return_value=False))
         stack.enter_context(patch.object(st, "button", return_value=False))
-        # side_effect, not return_value: _output_section calls st.empty() three
-        # times (reasoning, output, download panes). A single return_value hands
-        # all three the same mock, so output routed to the wrong pane would still
+        # side_effect, not return_value: _output_section calls st.empty() once
+        # per pane — output and download, plus reasoning while the toggle is on
+        # (off here, since session_state is empty). A single return_value hands
+        # them all the same mock, so output routed to the wrong pane would still
         # record its calls on the expected object and assert clean.
         stack.enter_context(
             patch.object(st, "empty", side_effect=lambda *a, **k: MagicMock())
@@ -430,9 +431,30 @@ def test_reasoning_trace_is_height_capped_and_tail_follows(app):
     reasoning_ph.container.assert_called_once_with(height=300, autoscroll=True)
 
 
+def test_render_output_pane_hidden_reasoning_pane_still_splits_the_trace(app):
+    """With the toggle off there is no Reasoning pane (placeholder None), but a
+    replayed run made with reasoning on still carries its trace, which must be
+    split off rather than rendered into the Result pane.
+
+    Markdown mode on purpose: structured mode's final pass runs
+    extract_answer_block, which digs the JSON out of the surrounding trace on
+    its own and would mask a missing split."""
+    output_ph = MagicMock()
+    app._render_output_pane(
+        output_ph,
+        None,
+        accumulated="trace text</think># Heading",
+        reasoning_enabled=True,
+        is_structured=False,
+        final=True,
+    )
+    output_ph.markdown.assert_called_once_with("# Heading")
+
+
 def test_render_output_pane_reasoning_disabled_caption(app):
-    """With always-render layout, the reasoning pane shows a 'disabled' caption
-    when reasoning is off — no empty whitespace between the headers."""
+    """When the pane is shown but the run being painted had reasoning off —
+    template generation, or a replay of a run from before the toggle was
+    switched on — it says so rather than sitting empty under its header."""
     output_ph = MagicMock()
     reasoning_ph = MagicMock()
     app._render_output_pane(
