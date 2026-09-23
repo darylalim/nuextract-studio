@@ -693,9 +693,9 @@ with col_left:
             # than guaranteeing anything server-side. It does not bound decode
             # memory either: a 1 MB flat-colour 10000x10000 PNG still expands to
             # ~300 MB of pixels. Kept for the widget hint, which is the part
-            # users actually see — a real server-side bound would mean
-            # server.maxUploadSize in a .streamlit/config.toml this repo
-            # deliberately does not ship.
+            # users actually see — a real server-side bound would mean adding
+            # server.maxUploadSize to .streamlit/config.toml, which currently
+            # holds only the dark theme.
             max_upload_size=_MAX_IMAGE_UPLOAD_MB,
             key="image_input",
         )

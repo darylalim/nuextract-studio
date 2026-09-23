@@ -1,0 +1,41 @@
+# "Graphite & Cobalt": a dark variant only. Streamlit builds each mode as root [theme] merged
+# with that mode's own section, so a root key would restyle Light too; with no root keys and no
+# [theme.light], Light stays byte-identical to stock and Settings still offers Light/Dark/System.
+# Fonts, radii and borders stay stock so both modes share one shape. The ratios below were
+# measured on Streamlit 1.64.0 and rest on its internals (named per key). tests/
+# test_streamlit_app.py re-checks the hard floors; re-verify the internals when the pin moves.
+
+[theme.dark]
+# Cobalt. Streamlit hard-codes the primary button label to white: 4.68:1 (floor 4.5). This colour
+# also draws the tab underline, focus borders and hover fill (primary minus 0.15 HSL lightness):
+# 3.76:1 on the canvas, 3.24:1 on inputs, hover fill 2.18:1. The active tab label (3.76:1) is below
+# AA as text; that would need luminance >= 0.219, and the white label caps it at 0.183.
+# Hue 226 sits 17 degrees from the azure used by JSON null, st.info and links.
+primaryColor = "#4069ef"
+# Lifted off stock #0e1117 to soften glare beside a white scan (17.6:1 against white; stock is
+# 18.9:1). No lighter, because every step up costs the primary contrast above.
+backgroundColor = "#161920"
+# Inputs, uploader and template editor, one low-chroma 1.16:1 step up. Capped so the primary focus
+# border keeps 3:1 against it.
+secondaryBackgroundColor = "#22262d"
+# The darkest surface, so the Result reads as a recessed well (1.11:1 below the canvas). Prism's
+# token colours are hard-coded; JSON null #1c83e1 binds at 4.98:1 (floor 4.5; stock's well: 4.36).
+codeBackgroundColor = "#0b0d11"
+# Off-white rather than stock #fafafa, to curb halation in long Reasoning reads (16.0:1 on the
+# well). In dark mode it also paints the toggle knob, which is not white.
+textColor = "#e6e9ee"
+# Stock Light's own blue (blue70). Alert text and links derive from it (+0.15 HSL lightness) and
+# the fill is it at 20% alpha: info text 5.46:1, links 6.95:1. Stock info text is 4.48:1 here.
+blueColor = "#1c83e1"
+# Stock Light's own yellow (yellow80). Stock Dark's #ffff12 fill turns olive; this reads amber
+# (text 8.12:1). st.warning is the app's most frequent alert.
+yellowColor = "#faca2b"
+
+[theme.dark.sidebar]
+# Recessed below the canvas (1.075:1), as Light mode's sidebar is. That leaves room for the
+# readouts and the knob below to pass together.
+backgroundColor = "#0e1116"
+# primaryColor's hue and saturation, 0.05 lighter: slider readouts 4.96:1, textColor knob on the
+# ON track 3.13:1, filled vs unfilled track 3.11:1. White on it is only 3.81:1, so delete this
+# key before any primary button goes in the sidebar.
+primaryColor = "#577bf1"

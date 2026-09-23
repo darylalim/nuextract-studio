@@ -1,4 +1,5 @@
 import sys
+import tomllib
 from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -550,3 +551,89 @@ def test_render_download_button_strips_reasoning_trace(app):
             download_kind="extract",
         )
     assert mock_dl.call_args.kwargs["data"] == '{"name": "Bob"}'
+
+
+# --- theme ---
+
+_THEME_CONFIG = Path(__file__).resolve().parents[1] / ".streamlit" / "config.toml"
+
+# Streamlit 1.64 hard-codes these code-block token colours (Prism classes mapped
+# to fixed palette entries in the frontend bundle) rather than deriving them
+# from the theme, so codeBackgroundColor is the only lever over their contrast.
+# Re-read them from the bundle when bumping the streamlit pin.
+_PRISM_TOKEN_COLORS = {
+    "JSON key": "#00a4d4",
+    "string": "#09ab3b",
+    "number": "#29b09d",
+    "boolean": "#21c354",
+    "null": "#1c83e1",
+    "punctuation": "#808495",
+    "colon": "#ed6f13",
+}
+
+
+def _contrast(fg, bg):
+    """WCAG 2.x contrast ratio between two #rrggbb colours."""
+
+    def luminance(color):
+        r, g, b = (
+            c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+            for c in (int(color[i : i + 2], 16) / 255 for i in (1, 3, 5))
+        )
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+    lighter, darker = sorted((luminance(fg), luminance(bg)), reverse=True)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def test_theme_config_customises_dark_mode_only():
+    """Only [theme.dark] may be set, so Light stays stock and the toggle survives.
+
+    Streamlit builds each mode as root [theme] merged with that mode's section,
+    so a root key would restyle Light as well, and a [theme.light] section would
+    stop Light matching stock. Either variant section alone keeps Light/Dark/
+    System in the Settings menu; root keys with no variant section would lock
+    the app to a single mode.
+    """
+    theme = tomllib.loads(_THEME_CONFIG.read_text())["theme"]
+    assert set(theme) == {"dark"}, (
+        f"[theme] must hold only the dark variant, found {sorted(theme)}"
+    )
+
+
+def test_dark_theme_meets_its_contrast_floors():
+    """The pairs .streamlit/config.toml's comments justify each colour by.
+
+    Each rests on a Streamlit 1.64 internal: the primary button label is
+    hard-coded white, the toggle knob is drawn in textColor, and code-block
+    tokens use the fixed _PRISM_TOKEN_COLORS. A tweak that looks harmless — a
+    lighter primary, a lifted code well — fails here instead of shipping
+    unreadable. Sidebar fallbacks mirror Streamlit's own when a key is unset.
+    """
+    dark = tomllib.loads(_THEME_CONFIG.read_text())["theme"]["dark"]
+    sidebar = dark.get("sidebar", {})
+    sidebar_primary = sidebar.get("primaryColor", dark["primaryColor"])
+    sidebar_bg = sidebar.get("backgroundColor", dark["secondaryBackgroundColor"])
+    code_bg = dark["codeBackgroundColor"]
+    floors = {
+        "white label on the primary button": ("#ffffff", dark["primaryColor"], 4.5),
+        "primary on the canvas": (dark["primaryColor"], dark["backgroundColor"], 3),
+        "primary focus border on inputs": (
+            dark["primaryColor"],
+            dark["secondaryBackgroundColor"],
+            3,
+        ),
+        "text on the canvas": (dark["textColor"], dark["backgroundColor"], 4.5),
+        "text in the Reasoning pane": (dark["textColor"], code_bg, 4.5),
+        "sidebar slider readouts": (sidebar_primary, sidebar_bg, 4.5),
+        "toggle knob on its ON track": (dark["textColor"], sidebar_primary, 3),
+    } | {
+        f"{name} token in the Result pane": (color, code_bg, 4.5)
+        for name, color in _PRISM_TOKEN_COLORS.items()
+    }
+    failures = [
+        f"{label}: {fg} on {bg} is {_contrast(fg, bg):.2f}:1, needs {floor}:1"
+        for label, (fg, bg, floor) in floors.items()
+        if _contrast(fg, bg) < floor
+    ]
+    assert not failures, "\n".join(failures)

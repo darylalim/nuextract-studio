@@ -103,7 +103,7 @@ Exact values vary with the model; fields it can't fill come back `null` (here th
 uv run --frozen ruff check .      # Lint
 uv run --frozen ruff format .     # Format (add --check to verify without rewriting)
 uv run --frozen ty check          # Type check
-uv run --frozen pytest            # Tests (110)
+uv run --frozen pytest            # Tests (112)
 ```
 
 `--frozen` is not optional here. A bare `uv run` locks and syncs by default, so with an out-of-date `uv.lock` it silently rewrites the lock in your working tree — every gate then passes against the regenerated lock while the committed one stays stale, and CI's `uv sync --locked` fails on `main`.
@@ -128,12 +128,14 @@ git config core.hooksPath .githooks
 streamlit_app.py                    # UI: settings sidebar, tabbed inputs, buttons + streamed output in an st.fragment
 nuextract.py                        # mlx-vlm wrapper: load, render prompt, stream extraction
 pyproject.toml                      # Dependencies (pinned) + ruff/ty/pytest config
+.streamlit/
+  config.toml                       # Dark-mode palette only; Light stays Streamlit's stock theme
 scripts/
   probe_mlx_vlm.py                  # Verifies model + template kwargs flow-through end-to-end
 tests/
   conftest.py                       # sys.path setup + guard: no test may load a real model
   test_nuextract.py                 # Wrapper tests (44)
-  test_streamlit_app.py             # App helper tests (30)
+  test_streamlit_app.py             # App helper + theme contrast tests (32)
   test_streamlit_app_apptest.py     # End-to-end UI tests via Streamlit AppTest (36)
 .githooks/
   pre-push                          # Runs uv lock --check + all four gates before a push
@@ -154,7 +156,7 @@ uv run --frozen ty check
 uv run --frozen pytest
 ```
 
-Add or update tests where practical; the suite mocks the model so it runs fast and needs no network (currently 110 tests). Enabling `git config core.hooksPath .githooks` runs all four of these gates, plus `uv lock --check`, automatically before each push. See [CLAUDE.md](CLAUDE.md) for an architecture overview.
+Add or update tests where practical; the suite mocks the model so it runs fast and needs no network (currently 112 tests). Enabling `git config core.hooksPath .githooks` runs all four of these gates, plus `uv lock --check`, automatically before each push. See [CLAUDE.md](CLAUDE.md) for an architecture overview.
 
 ## Acknowledgments
 
