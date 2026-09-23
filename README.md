@@ -7,7 +7,7 @@
 
 Streamlit application for structured extraction, document understanding, and template generation with NuMind NuExtract on Apple Silicon with MLX. Mirrors the [official NuExtract3 Hugging Face Space](https://huggingface.co/spaces/numind/NuExtract3) but runs entirely locally via [mlx-vlm](https://github.com/Blaizzy/mlx-vlm) — no discrete GPU, CUDA, or external API required (inference runs on the Apple GPU via MLX/Metal).
 
-![NuExtract Studio two-pane extraction UI, dark theme](docs/screenshot-dark.png)
+![NuExtract Studio in dark mode: a settings sidebar, Document and Template input tabs, and the extracted JSON in the Result pane](docs/screenshot-dark.png)
 
 ## Features
 
