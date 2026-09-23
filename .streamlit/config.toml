@@ -1,9 +1,12 @@
 # "Graphite & Cobalt": a dark variant only. Streamlit builds each mode as root [theme] merged
 # with that mode's own section, so a root key would restyle Light too; with no root keys and no
-# [theme.light], Light stays byte-identical to stock and Settings still offers Light/Dark/System.
-# Fonts, radii and borders stay stock so both modes share one shape. The ratios below were
-# measured on Streamlit 1.64.0 and rest on its internals (named per key). tests/
-# test_streamlit_app.py re-checks the hard floors; re-verify the internals when the pin moves.
+# [theme.light], Light renders as stock for everything this app draws (any custom theme also
+# repoints the derived st.progress fill at the primary, and the app has no progress bar), and
+# Settings still offers Light/Dark/System. Colours only, so both modes share one shape.
+# Streamlit reads this file from the working directory: launch from the repo root.
+# The ratios below were measured on Streamlit 1.64.0 and rest on its internals (named per key);
+# tests/test_streamlit_app.py re-checks the hard floors and fails on any other Streamlit version
+# until those internals are re-verified.
 
 [theme.dark]
 # Cobalt. Streamlit hard-codes the primary button label to white: 4.68:1 (floor 4.5). This colour

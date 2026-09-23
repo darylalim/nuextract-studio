@@ -1,3 +1,6 @@
+import colorsys
+import importlib.metadata
+import re
 import sys
 import tomllib
 from contextlib import ExitStack
@@ -557,10 +560,14 @@ def test_render_download_button_strips_reasoning_trace(app):
 
 _THEME_CONFIG = Path(__file__).resolve().parents[1] / ".streamlit" / "config.toml"
 
-# Streamlit 1.64 hard-codes these code-block token colours (Prism classes mapped
-# to fixed palette entries in the frontend bundle) rather than deriving them
-# from the theme, so codeBackgroundColor is the only lever over their contrast.
-# Re-read them from the bundle when bumping the streamlit pin.
+# The Streamlit release every internal below was read from. The contrast test
+# refuses any other, because a release can change those internals while the
+# copies here keep passing.
+_THEME_VERIFIED_STREAMLIT = "1.64.0"
+
+# Streamlit hard-codes these code-block token colours (Prism classes mapped to
+# fixed palette entries in the frontend bundle) rather than deriving them from
+# the theme, so codeBackgroundColor is the only lever over their contrast.
 _PRISM_TOKEN_COLORS = {
     "JSON key": "#00a4d4",
     "string": "#09ab3b",
@@ -571,6 +578,51 @@ _PRISM_TOKEN_COLORS = {
     "colon": "#ed6f13",
 }
 
+# How Streamlit derives a semantic colour's variants from its base (per
+# `streamlit config show`, and measured in a browser): alert and link text is
+# the base lightened by 0.15 HSL lightness, and the alert fill is the base at
+# 20% alpha over the canvas. Streamlit's own rounding lands within one unit
+# per channel of _lighten's, which moves no ratio here across its floor.
+_SEMANTIC_TEXT_LIGHTEN = 0.15
+_SEMANTIC_FILL_ALPHA = 0.2
+# Stock dark's red (red60) for both alert text and fill base while redColor is
+# unset — st.error's colours, measured on this config's canvas.
+_STOCK_DARK_RED = "#ff6c6c"
+
+
+def _theme():
+    """The [theme] table of the committed .streamlit/config.toml."""
+    with _THEME_CONFIG.open("rb") as f:
+        return tomllib.load(f)["theme"]
+
+
+def _rgb(color):
+    """A #rrggbb colour's channels as 0-1 floats.
+
+    Fails loudly on the other spellings Streamlit accepts (#rgb, no leading
+    #, #rrggbbaa), which slicing would misread or treat as opaque.
+    """
+    assert re.fullmatch(r"#[0-9a-fA-F]{6}", color), (
+        f"{color!r}: the theme tests handle opaque #rrggbb colours only"
+    )
+    return tuple(int(color[i : i + 2], 16) / 255 for i in (1, 3, 5))
+
+
+def _hex(channels):
+    """The #rrggbb spelling of 0-1 float channels."""
+    return "#" + "".join(f"{round(c * 255):02x}" for c in channels)
+
+
+def _lighten(color, amount):
+    """color with its HSL lightness raised by amount, capped at white."""
+    hue, lightness, saturation = colorsys.rgb_to_hls(*_rgb(color))
+    return _hex(colorsys.hls_to_rgb(hue, min(1, lightness + amount), saturation))
+
+
+def _over(color, alpha, bg):
+    """color at the given alpha, composited over an opaque bg."""
+    return _hex(alpha * c + (1 - alpha) * b for c, b in zip(_rgb(color), _rgb(bg)))
+
 
 def _contrast(fg, bg):
     """WCAG 2.x contrast ratio between two #rrggbb colours."""
@@ -578,7 +630,7 @@ def _contrast(fg, bg):
     def luminance(color):
         r, g, b = (
             c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
-            for c in (int(color[i : i + 2], 16) / 255 for i in (1, 3, 5))
+            for c in _rgb(color)
         )
         return 0.2126 * r + 0.7152 * g + 0.0722 * b
 
@@ -587,50 +639,87 @@ def _contrast(fg, bg):
 
 
 def test_theme_config_customises_dark_mode_only():
-    """Only [theme.dark] may be set, so Light stays stock and the toggle survives.
+    """Only dark-mode colours may be set, so Light and the toggle stay stock.
 
     Streamlit builds each mode as root [theme] merged with that mode's section,
     so a root key would restyle Light as well, and a [theme.light] section would
     stop Light matching stock. Either variant section alone keeps Light/Dark/
     System in the Settings menu; root keys with no variant section would lock
-    the app to a single mode.
+    the app to a single mode. Within [theme.dark], colours only: a font,
+    radius, border toggle or link underline would change the app's shape
+    whenever the user flips the toggle.
     """
-    theme = tomllib.loads(_THEME_CONFIG.read_text())["theme"]
+    theme = _theme()
     assert set(theme) == {"dark"}, (
         f"[theme] must hold only the dark variant, found {sorted(theme)}"
     )
+    dark = theme["dark"]
+    non_colour = [
+        key
+        for section in (dark, dark.get("sidebar", {}))
+        for key in section
+        if key != "sidebar" and not key.endswith(("Color", "Colors"))
+    ]
+    assert not non_colour, f"[theme.dark] must set colours only, found {non_colour}"
 
 
 def test_dark_theme_meets_its_contrast_floors():
     """The pairs .streamlit/config.toml's comments justify each colour by.
 
-    Each rests on a Streamlit 1.64 internal: the primary button label is
-    hard-coded white, the toggle knob is drawn in textColor, and code-block
-    tokens use the fixed _PRISM_TOKEN_COLORS. A tweak that looks harmless — a
-    lighter primary, a lifted code well — fails here instead of shipping
-    unreadable. Sidebar fallbacks mirror Streamlit's own when a key is unset.
+    Each rests on a Streamlit internal: the primary button label is hard-coded
+    white, the toggle knob is drawn in textColor, code-block tokens use the
+    fixed _PRISM_TOKEN_COLORS, and semantic text and fills derive from their
+    base colour. A tweak that looks harmless — a lighter primary, a lifted code
+    well — fails here instead of shipping unreadable. Sidebar fallbacks mirror
+    Streamlit's, which merges [theme.dark.sidebar] over [theme.dark].
     """
-    dark = tomllib.loads(_THEME_CONFIG.read_text())["theme"]["dark"]
+    installed = importlib.metadata.version("streamlit")
+    assert installed == _THEME_VERIFIED_STREAMLIT, (
+        f"streamlit {installed} is installed, but this test copies internals "
+        f"read from {_THEME_VERIFIED_STREAMLIT}. Re-verify _PRISM_TOKEN_COLORS, "
+        "the white primary-button label, the textColor toggle knob and the "
+        "semantic derivations against the new frontend bundle, then bump "
+        "_THEME_VERIFIED_STREAMLIT."
+    )
+    dark = _theme()["dark"]
     sidebar = dark.get("sidebar", {})
     sidebar_primary = sidebar.get("primaryColor", dark["primaryColor"])
     sidebar_bg = sidebar.get("backgroundColor", dark["secondaryBackgroundColor"])
-    code_bg = dark["codeBackgroundColor"]
+    sidebar_text = sidebar.get("textColor", dark["textColor"])
+    canvas, code_bg = dark["backgroundColor"], dark["codeBackgroundColor"]
     floors = {
         "white label on the primary button": ("#ffffff", dark["primaryColor"], 4.5),
-        "primary on the canvas": (dark["primaryColor"], dark["backgroundColor"], 3),
+        "primary on the canvas": (dark["primaryColor"], canvas, 3),
         "primary focus border on inputs": (
             dark["primaryColor"],
             dark["secondaryBackgroundColor"],
             3,
         ),
-        "text on the canvas": (dark["textColor"], dark["backgroundColor"], 4.5),
+        "text on the canvas": (dark["textColor"], canvas, 4.5),
         "text in the Reasoning pane": (dark["textColor"], code_bg, 4.5),
         "sidebar slider readouts": (sidebar_primary, sidebar_bg, 4.5),
-        "toggle knob on its ON track": (dark["textColor"], sidebar_primary, 3),
+        "toggle knob on its ON track": (sidebar_text, sidebar_primary, 3),
     } | {
         f"{name} token in the Result pane": (color, code_bg, 4.5)
         for name, color in _PRISM_TOKEN_COLORS.items()
     }
+    # (text, fill base) for each semantic colour the config sets, plus red:
+    # st.error is the app's own alert, and it sits on this canvas even while
+    # redColor is unset and it keeps stock dark's values.
+    semantic = {"red": (_STOCK_DARK_RED, _STOCK_DARK_RED)}
+    for name in ("red", "orange", "yellow", "blue", "green"):
+        if base := dark.get(f"{name}Color"):
+            semantic[name] = (_lighten(base, _SEMANTIC_TEXT_LIGHTEN), base)
+    for name, (text, fill_base) in semantic.items():
+        text = dark.get(f"{name}TextColor", text)
+        fill = dark.get(
+            f"{name}BackgroundColor", _over(fill_base, _SEMANTIC_FILL_ALPHA, canvas)
+        )
+        floors[f"{name} alert text on its fill"] = (text, fill, 4.5)
+    # Links default to the resolved blue text colour.
+    if "blue" in semantic or "linkColor" in dark:
+        link = dark.get("linkColor") or semantic["blue"][0]
+        floors["links on the canvas"] = (link, canvas, 4.5)
     failures = [
         f"{label}: {fg} on {bg} is {_contrast(fg, bg):.2f}:1, needs {floor}:1"
         for label, (fg, bg, floor) in floors.items()

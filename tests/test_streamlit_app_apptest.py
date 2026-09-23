@@ -163,6 +163,9 @@ def test_settings_sit_in_the_sidebar_and_inputs_in_two_tabs(at):
     assert [t.key for t in at.sidebar.toggle] == ["reasoning_checkbox"]
     # Settings only: the model name was removed from the sidebar by request.
     assert not at.sidebar.caption
+    # [theme.dark.sidebar] lightens the primary so the slider readouts stay
+    # legible, which leaves a white button label on it at 3.81:1.
+    assert not [b.key for b in at.sidebar.button if b.proto.type == "primary"]
 
     document, template = at.tabs
     assert document.label.endswith("Document")
